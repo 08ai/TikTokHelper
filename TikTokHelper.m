@@ -180,9 +180,9 @@ static void hooked_convUpdated(id self, SEL _cmd, id info) {
 + (void)installMessageHook {
     Class ConvCls = NSClassFromString(@"AWEIMMessageConversation");
     if (!ConvCls) return;
-    SEL sel = NSSelectorFromString(@"conversationUpdated:");
+    SEL sel = NSSelectorFromString(@"didInsertNewMessagesWithMessageIdentifiers:belongingConversationMap:reason:");
     Method m = class_getInstanceMethod(ConvCls, sel);
-    if (!m) { sel = NSSelectorFromString(@"didInsertNewMessagesWithMessageIdentifiers:belongingConversationMap:reason:"); m = class_getInstanceMethod(ConvCls, sel); }
+    if (!m) { sel = NSSelectorFromString(@"conversationUpdated:"); m = class_getInstanceMethod(ConvCls, sel); }
     if (!m) return;
     gOrigConvUpdated = method_getImplementation(m);
     method_setImplementation(m, (IMP)hooked_convUpdated);

@@ -155,38 +155,41 @@ static void setStatus(NSString *s) {
 // ==================== 自动私信 (Hook conversationUpdated:) ====================
 static IMP gOrigConvUpdated = NULL;
 
-static void hooked_convUpdated(id self, SEL _cmd, id info) {
+static void hooked_onMessageAdded(id self, SEL _cmd, id message, id convID) {
     if (gOrigConvUpdated)
-        ((void(*)(id,SEL,id))gOrigConvUpdated)(self, _cmd, info);
-    if (!gAutoDM) return;
+        ((void(*)(id,SEL,id,id))gOrigConvUpdated)(self, _cmd, message, convID);
+    if (!gAutoDM || !message) return;
     @try {
-        id lastMsg = _msg0(self, NSSelectorFromString(@"lastMessage"));
-        if (!lastMsg) return;
-        id sender = _msg0(lastMsg, NSSelectorFromString(@"sender"));
-        if (sender) {
-            NSNumber *isSelf = _msg0(sender, NSSelectorFromString(@"isSelf"));
-            if (isSelf && isSelf.boolValue) return;
-        }
-        NSString *msgId = [lastMsg description];
+        id sender = _msg0(message, NSSelectorFromString(@"sender"));
+        if (sender && [_msg0(sender, NSSelectorFromString(@"isSelf")) boolValue]) return;
+        NSString *msgId = [message description];
         if ([gRepliedMsgIDs containsObject:msgId]) return;
         [gRepliedMsgIDs addObject:msgId];
-        NSString *text = _msg0(lastMsg, NSSelectorFromString(@"text"));
+        NSString *text = _msg0(message, NSSelectorFromString(@"text"));
         LOG(@"[DM] 新消息: %@", text);
-        [[[TikTokHelper alloc] init] sendReply:@"你好" toConversation:self];
-        LOG(@"[DM] 已回复: 你好");
+        // Find conversation by ID and reply
+        id conv = _msg0(self, NSSelectorFromString(@"conversationForID:"));
+        if (!conv) conv = _msg0(NSClassFromString(@"AWEIMMessageConversationCache"),
+            NSSelectorFromString(@"conversationForID:"), convID);
+        if (conv) {
+            [[[TikTokHelper alloc] init] sendReply:@"你好" toConversation:conv];
+            LOG(@"[DM] 已回复: 你好");
+        }
     } @catch (NSException *e) {}
 }
 
 + (void)installMessageHook {
-    Class ConvCls = NSClassFromString(@"AWEIMMessageConversation");
-    if (!ConvCls) return;
-    SEL sel = NSSelectorFromString(@"didInsertNewMessagesWithMessageIdentifiers:belongingConversationMap:reason:");
-    Method m = class_getInstanceMethod(ConvCls, sel);
-    if (!m) { sel = NSSelectorFromString(@"conversationUpdated:"); m = class_getInstanceMethod(ConvCls, sel); }
+    // Hook AWEIMSendMessageController.addMessageLocally:conversationID:
+    // This is called for EVERY message added to a conversation (both sent & received)
+    Class SendCtrl = NSClassFromString(@"AWEIMSendMessageController");
+    if (!SendCtrl) return;
+    SEL sel = NSSelectorFromString(@"addMessageLocally:conversationID:");
+    Method m = class_getInstanceMethod(SendCtrl, sel);
+    if (!m) { sel = NSSelectorFromString(@"addMessageLocally:forceOrderIndex:conversationID:"); m = class_getInstanceMethod(SendCtrl, sel); }
     if (!m) return;
     gOrigConvUpdated = method_getImplementation(m);
-    method_setImplementation(m, (IMP)hooked_convUpdated);
-    LOG(@"[DM] Hook: %@", NSStringFromSelector(sel));
+    method_setImplementation(m, (IMP)hooked_onMessageAdded);
+    LOG(@"[DM] Hook: %@ on AWEIMSendMessageController", NSStringFromSelector(sel));
 }
 
 - (void)sendReply:(NSString *)text toConversation:(id)conv {

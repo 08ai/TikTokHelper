@@ -8,7 +8,7 @@
 //         -o TikTokHelper.dylib TikTokHelper.m
 
 #import <UIKit/UIKit.h>
-// CoreData used via runtime (weak linked)
+#import <CoreData/CoreData.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 

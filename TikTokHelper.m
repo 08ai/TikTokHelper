@@ -169,7 +169,7 @@ static void hooked_onMessageAdded(id self, SEL _cmd, id message, id convID) {
         LOG(@"[DM] 新消息: %@", text);
         // Find conversation by ID and reply
         id conv = _msg0(self, NSSelectorFromString(@"conversationForID:"));
-        if (!conv) conv = _msg0(NSClassFromString(@"AWEIMMessageConversationCache"),
+        if (!conv) conv = _msg1(NSClassFromString(@"AWEIMMessageConversationCache"),
             NSSelectorFromString(@"conversationForID:"), convID);
         if (conv) {
             [[[TikTokHelper alloc] init] sendReply:@"你好" toConversation:conv];

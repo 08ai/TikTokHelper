@@ -116,22 +116,13 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 - (void)sendReplyToTIMOConvID:(NSString *)cid {
     dispatch_async(dispatch_get_main_queue(), ^{
-        Class TC = NSClassFromString(@"AWEIMTextMessageContent");
-        Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
-        Class MS = NSClassFromString(@"AWEIMModuleService");
-        if (!TC||!SM||!MS) return;
-        id c = [[TC alloc] init];
-        SEL setText = NSSelectorFromString(@"setText:");
-        if ([c respondsToSelector:setText])
-            ((void(*)(id,SEL,NSString*))objc_msgSend)(c, setText, @"你好");
-        id m = [[SM alloc] init];
-        SEL setContent = NSSelectorFromString(@"setContent:");
-        if ([m respondsToSelector:setContent])
-            ((void(*)(id,SEL,id))objc_msgSend)(m, setContent, c);
-        id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
-        SEL addSel = NSSelectorFromString(@"addMessageLocally:conversationID:");
-        if ([sc respondsToSelector:addSel])
-            ((void(*)(id,SEL,id,NSString*))objc_msgSend)(sc, addSel, m, cid);
+        // Use existing sendReply:toConversation: which is proven
+        Class ConvCls = NSClassFromString(@"AWEIMMessageConversation");
+        id conv = [[ConvCls alloc] init];
+        SEL initSel = NSSelectorFromString(@"initWithConversationID:options:");
+        if ([conv respondsToSelector:initSel])
+            conv = ((id(*)(id,SEL,NSString*,id))objc_msgSend)(conv, initSel, cid, nil);
+        [self sendReply:@"你好" toConversation:conv];
     });
 }
 

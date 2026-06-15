@@ -69,34 +69,75 @@ static void tracked_awake(id self, SEL _cmd) {
     }
 }
 
-static void installConvTracking(void) {
-    Class TIMO = NSClassFromString(@"TIMOConversation");
-    if (!TIMO) return;
-    gAllConvs = [NSHashTable weakObjectsHashTable];
+static SEL gCachedConvListSel = NULL;
+static Class gCachedConvListClass = nil;
 
-    // Hook awakeFromFetch / awakeFromInsert
-    SEL s = @selector(awakeFromFetch);
-    Method m = class_getInstanceMethod(TIMO, s);
-    if (!m) { s = @selector(awakeFromInsert); m = class_getInstanceMethod(TIMO, s); }
-    if (m) {
-        gOrigAwakeImp = method_getImplementation(m);
-        method_setImplementation(m, (IMP)tracked_awake);
-        LOG(@"[DM] TIMOConversation tracking installed");
+static void discoverConversationAPI(void) {
+    unsigned int classCount;
+    Class *classes = objc_copyClassList(&classCount);
+    for (unsigned int i = 0; i < classCount; i++) {
+        Class cls = classes[i];
+        unsigned int cmCount;
+        Method *cmethods = class_copyMethodList(object_getClass(cls), &cmCount);
+        if (!cmethods) continue;
+        for (unsigned int j = 0; j < cmCount; j++) {
+            SEL sel = method_getName(cmethods[j]);
+            NSString *name = NSStringFromSelector(sel);
+            NSString *lower = name.lowercaseString;
+            if (![lower containsString:@"conversation"]) continue;
+            if (!([lower containsString:@"all"]||[lower containsString:@"list"]||[lower containsString:@"array"]||[lower containsString:@"get"])) continue;
+            char retType[8];
+            method_getReturnType(cmethods[j], retType, sizeof(retType));
+            if (retType[0] != '@') continue;
+            if (method_getNumberOfArguments(cmethods[j]) != 2) continue;
+            @try {
+                id result = ((id(*)(id,SEL))objc_msgSend)(cls, sel);
+                if (result && [result isKindOfClass:[NSArray class]] && [(NSArray*)result count] > 0) {
+                    gCachedConvListClass = cls;
+                    gCachedConvListSel = sel;
+                    LOG(@"[DM] 发现会话API: %s +%@ (%lu个会话)", class_getName(cls), name, (unsigned long)[(NSArray*)result count]);
+                    // Also get MOC from first result
+                    id first = [(NSArray*)result firstObject];
+                    id moc = _msg0(first, @selector(managedObjectContext));
+                    if (moc) gMOC = moc;
+                    break;
+                }
+            } @catch (NSException *e) {}
+        }
+        free(cmethods);
+        if (gCachedConvListSel) break;
     }
+    free(classes);
+}
+
+static void installConvTracking(void) {
+    gAllConvs = [NSHashTable weakObjectsHashTable];
+    // 延迟执行 API 发现
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8*NSEC_PER_SEC), dispatch_get_global_queue(0,0), ^{
+        discoverConversationAPI();
+    });
 }
 
 static NSArray *getAllConversations(void) {
     NSMutableArray *r = [NSMutableArray array];
     if (gAllConvs) for (id o in gAllConvs) [r addObject:o];
-
+    if (gCachedConvListSel && gCachedConvListClass) {
+        @try {
+            id result = ((id(*)(id,SEL))objc_msgSend)(gCachedConvListClass, gCachedConvListSel);
+            if (result && [result isKindOfClass:[NSArray class]])
+                for (id obj in (NSArray*)result) if (![r containsObject:obj]) [r addObject:obj];
+        } @catch (NSException *e) {}
+    }
     if (gMOC) {
-        NSFetchRequest *req = [[NSFetchRequest alloc] init];
-        NSEntityDescription *e = [NSEntityDescription entityForName:@"TIMOConversation" inManagedObjectContext:gMOC];
-        if (e) {
-            [req setEntity:e]; [req setIncludesPendingChanges:YES];
-            NSArray *f = [gMOC executeFetchRequest:req error:nil];
-            if (f) [r addObjectsFromArray:f];
-        }
+        @try {
+            NSFetchRequest *req = [[NSFetchRequest alloc] init];
+            NSEntityDescription *e = [NSEntityDescription entityForName:@"TIMOConversation" inManagedObjectContext:gMOC];
+            if (e) {
+                [req setEntity:e]; [req setIncludesPendingChanges:YES];
+                NSArray *f = [gMOC executeFetchRequest:req error:nil];
+                if (f) [r addObjectsFromArray:f];
+            }
+        } @catch (NSException *e) {}
     }
     return r;
 }

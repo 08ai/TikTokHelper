@@ -47,6 +47,11 @@ static NSArray<NSString*> *fetchUIDs(void) {
 static void setStatus(NSString *s){ dispatch_async(dispatch_get_main_queue(),^{ gStatusLbl.text=s; }); }
 
 // ==================== 自动私信 Hook ====================
+@interface TikTokHelper : NSObject
+- (void)sendReplyToTIMOConv:(id)conv;
++ (void)installHook;
+@end
+
 static IMP gOrigSetLastMsg = NULL;
 
 static void hooked_setLastMsg(id self, SEL _cmd, id message) {
@@ -62,7 +67,6 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     } @catch (NSException *e) {}
 }
 
-@interface TikTokHelper : NSObject @end
 @implementation TikTokHelper
 
 + (void)installHook {

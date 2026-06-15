@@ -23,6 +23,15 @@ jobs:
           ls -lh TikTokHelper.dylib
           file TikTokHelper.dylib
 
+      - name: Install ldid
+        run: |
+          brew install ldid 2>/dev/null || true
+
+      - name: Ad-hoc sign dylib
+        run: |
+          ldid -S TikTokHelper.dylib 2>/dev/null || codesign -s - TikTokHelper.dylib 2>/dev/null || echo "Signing failed, continuing anyway..."
+          ls -lh TikTokHelper.dylib
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

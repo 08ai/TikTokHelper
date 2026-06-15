@@ -1,0 +1,30 @@
+name: Build TikTokHelper.dylib
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14  # Apple Silicon runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile dylib
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          clang -arch arm64 -dynamiclib \
+            -framework Foundation -framework UIKit -framework CoreGraphics \
+            -fobjc-arc \
+            -miphoneos-version-min=14.0 \
+            -isysroot "$SDK" \
+            -o TikTokHelper.dylib \
+            TikTokHelper.m
+          ls -lh TikTokHelper.dylib
+          file TikTokHelper.dylib
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TikTokHelper.dylib
+          path: TikTokHelper.dylib

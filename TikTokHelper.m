@@ -117,7 +117,7 @@ static BOOL sendTextToConv(id conv, NSString *text) {
 }
 
 // ==================== 创建会话并发送 ====================
-static void sendDMToUser(NSString *uid, NSString *text) {
+- (void)sendDMToUser:(NSString *)uid message:(NSString *)text {
     // 1. 先尝试从 CoreData 找到已有会话
     NSArray *convs = getAllConversations();
     for (id conv in convs) {

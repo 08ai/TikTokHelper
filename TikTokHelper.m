@@ -257,13 +257,26 @@ static void setStatus(NSString *s) {
     gWin = keyWin();
     if (!gWin) { dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),^{[self buildUI];}); return; }
 
+    // 找到内容层：UITransitionView 的最后一个子视图
+    UIView *contentView = gWin;
+    NSArray *subs = gWin.subviews;
+    if (subs.count > 0) {
+        UIView *tView = subs[0]; // UITransitionView
+        if (tView.subviews.count > 0) {
+            contentView = tView.subviews.lastObject;
+            LOG(@"Using contentView: %@", NSStringFromClass([contentView class]));
+        } else {
+            contentView = tView;
+        }
+    }
+
     CGFloat SW = [UIScreen mainScreen].bounds.size.width;
 
-    // ── 红色展开按钮 (在 keyWindow 上) ──
+    // ── 红色展开按钮 (在 contentView 上) ──
     gToggleBtn = [self makeBtn:@"展开" frame:CGRectMake(SW-95,120,85,48) bg:rgb(0.92,0.1,0.1,0.92) fs:18];
     gToggleBtn.layer.cornerRadius = 16;
     [gToggleBtn addTarget:self action:@selector(onToggle) forControlEvents:UIControlEventTouchUpInside];
-    [gWin addSubview:gToggleBtn];
+    [contentView addSubview:gToggleBtn];
 
     // ── 黄色面板 ──
     CGFloat pW=175, pH=270;
@@ -273,7 +286,7 @@ static void setStatus(NSString *s) {
     gPanel.layer.borderWidth = 3;
     gPanel.layer.borderColor = [UIColor whiteColor].CGColor;
     gPanel.alpha = 0;
-    [gWin addSubview:gPanel];
+    [contentView addSubview:gPanel];
 
     // 标题
     UILabel *tl = [[UILabel alloc] initWithFrame:CGRectMake(10,8,pW-20,18)];

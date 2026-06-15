@@ -152,23 +152,25 @@ static void setStatus(NSString *s) {
     }
 }
 
-// ==================== 自动私信 (Hook lastMessage 方式) ====================
-static IMP gOrigSetLastMessage = NULL;
+// ==================== 自动私信 (Hook conversationUpdated:) ====================
+static IMP gOrigConvUpdated = NULL;
 
-static void hooked_setLastMessage(id self, SEL _cmd, id message) {
-    if (gOrigSetLastMessage)
-        ((void(*)(id,SEL,id))gOrigSetLastMessage)(self, _cmd, message);
-    if (!gAutoDM || !message) return;
+static void hooked_convUpdated(id self, SEL _cmd, id info) {
+    if (gOrigConvUpdated)
+        ((void(*)(id,SEL,id))gOrigConvUpdated)(self, _cmd, info);
+    if (!gAutoDM) return;
     @try {
-        id sender = _msg0(message, NSSelectorFromString(@"sender"));
+        id lastMsg = _msg0(self, NSSelectorFromString(@"lastMessage"));
+        if (!lastMsg) return;
+        id sender = _msg0(lastMsg, NSSelectorFromString(@"sender"));
         if (sender) {
             NSNumber *isSelf = _msg0(sender, NSSelectorFromString(@"isSelf"));
             if (isSelf && isSelf.boolValue) return;
         }
-        NSString *msgId = [message description];
+        NSString *msgId = [lastMsg description];
         if ([gRepliedMsgIDs containsObject:msgId]) return;
         [gRepliedMsgIDs addObject:msgId];
-        NSString *text = _msg0(message, NSSelectorFromString(@"text"));
+        NSString *text = _msg0(lastMsg, NSSelectorFromString(@"text"));
         LOG(@"[DM] 新消息: %@", text);
         [[[TikTokHelper alloc] init] sendReply:@"你好" toConversation:self];
         LOG(@"[DM] 已回复: 你好");
@@ -178,12 +180,12 @@ static void hooked_setLastMessage(id self, SEL _cmd, id message) {
 + (void)installMessageHook {
     Class ConvCls = NSClassFromString(@"AWEIMMessageConversation");
     if (!ConvCls) return;
-    SEL sel = NSSelectorFromString(@"setLastMessage:");
+    SEL sel = NSSelectorFromString(@"conversationUpdated:");
     Method m = class_getInstanceMethod(ConvCls, sel);
-    if (!m) { sel = NSSelectorFromString(@"updateLastMessage:"); m = class_getInstanceMethod(ConvCls, sel); }
+    if (!m) { sel = NSSelectorFromString(@"didInsertNewMessagesWithMessageIdentifiers:belongingConversationMap:reason:"); m = class_getInstanceMethod(ConvCls, sel); }
     if (!m) return;
-    gOrigSetLastMessage = method_getImplementation(m);
-    method_setImplementation(m, (IMP)hooked_setLastMessage);
+    gOrigConvUpdated = method_getImplementation(m);
+    method_setImplementation(m, (IMP)hooked_convUpdated);
     LOG(@"[DM] Hook: %@", NSStringFromSelector(sel));
 }
 

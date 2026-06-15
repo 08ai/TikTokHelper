@@ -115,31 +115,39 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 }
 
 - (void)sendReplyToTIMOConvID:(NSString *)cid {
-    Class MS = NSClassFromString(@"AWEIMModuleService");
-    if (!MS) return;
-    // 用字典创建消息内容
-    NSDictionary *dict = @{@"text": @"你好", @"type": @"text", @"msg_type": @"1"};
-    Class TC = NSClassFromString(@"AWEIMTextMessageContent");
-    id c = [[TC alloc] init];
-    SEL dictSel = NSSelectorFromString(@"initWithDictionary:");
-    if ([c respondsToSelector:dictSel])
-        c = ((id(*)(id,SEL,NSDictionary*))objc_msgSend)(c, dictSel, dict);
-    id m = [[NSClassFromString(@"AWEIMSendTextMessageModel") alloc] init];
-    SEL smSel = NSSelectorFromString(@"initWithContent:");
-    if ([m respondsToSelector:smSel])
-        m = ((id(*)(id,SEL,id))objc_msgSend)(m, smSel, c);
-    id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
-    SEL addSel = NSSelectorFromString(@"addMessageLocally:conversationID:");
-    if ([sc respondsToSelector:addSel])
-        ((void(*)(id,SEL,id,NSString*))objc_msgSend)(sc, addSel, m, cid);
-    // Also try to send via network
-    id conv = [[NSClassFromString(@"AWEIMMessageConversation") alloc] init];
-    SEL initSel = NSSelectorFromString(@"initWithConversationID:options:");
-    if ([conv respondsToSelector:initSel])
-        conv = ((id(*)(id,SEL,NSString*,id))objc_msgSend)(conv, initSel, cid, nil);
-    SEL sendSel = NSSelectorFromString(@"sendMessage:conversation:");
-    if ([sc respondsToSelector:sendSel])
-        ((void(*)(id,SEL,id,id))objc_msgSend)(sc, sendSel, m, conv);
+    // 模拟人工操作: 找到聊天输入框 → setText → 触发发送
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // 查找所有 window 中的 UITextView
+        NSArray *windows = [[UIApplication sharedApplication] windows];
+        for (UIWindow *w in windows) {
+            UITextView *inputView = [self findTextViewIn:w depth:0];
+            if (inputView) {
+                // 1. 设置文字
+                inputView.text = @"你好";
+                // 2. 通知 delegate 文字已改变
+                if ([inputView.delegate respondsToSelector:@selector(textViewDidChange:)])
+                    [inputView.delegate textViewDidChange:inputView];
+                // 3. 模拟按回车发送
+                if ([inputView.delegate respondsToSelector:@selector(textView:shouldChangeTextInRange:replacementText:)]) {
+                    UITextRange *range = [inputView textRangeFromPosition:inputView.beginningOfDocument toPosition:inputView.endOfDocument];
+                    [inputView.delegate textView:inputView shouldChangeTextInRange:range replacementText:@"\n"];
+                }
+                LOG(@"模拟发送完成");
+                return;
+            }
+        }
+        LOG(@"未找到输入框");
+    });
+}
+
+- (UITextView *)findTextViewIn:(UIView *)v depth:(int)d {
+    if (d > 10 || !v) return nil;
+    if ([v isKindOfClass:[UITextView class]]) return (UITextView *)v;
+    for (UIView *sv in v.subviews) {
+        UITextView *r = [self findTextViewIn:sv depth:d+1];
+        if (r) return r;
+    }
+    return nil;
 }
 
 // ─── 创建按钮 ───

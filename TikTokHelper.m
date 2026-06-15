@@ -105,7 +105,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 - (void)sendReplyToTIMOConv:(id)timoConv {
     NSString *cid = _msg0(timoConv, NSSelectorFromString(@"identifier"));
     if (!cid) return;
-    [self sendReply:@"你好" toTIMOConvID:cid];
+    [self sendReplyToTIMOConvID:cid];
 }
 
 - (void)sendReplyToTIMOConvID:(NSString *)cid {

@@ -214,6 +214,58 @@ static void hooked_onMessageAdded(id self, SEL _cmd, id message, id convID) {
 
 - (void)checkInboxAndReply { /* Hook handles this */ }
 
+- (void)sendDMToUser:(NSString *)userID message:(NSString *)text {
+    Class ModuleSvc = NSClassFromString(@"AWEIMModuleService");
+    Class ConvCls = NSClassFromString(@"AWEIMMessageConversation");
+    if (!ModuleSvc || !ConvCls) return;
+
+    // 1. Get or create conversation for this user
+    NSString *convID = _msg1(ModuleSvc, NSSelectorFromString(@"getSingleChatConversationIDFromUserID:"), userID);
+    if (convID) {
+        // Conversation exists - create object and send
+        id conv = [[ConvCls alloc] init];
+        SEL initSel = NSSelectorFromString(@"initWithConversationID:options:");
+        if ([conv respondsToSelector:initSel])
+            conv = ((id(*)(id,SEL,NSString*,id))objc_msgSend)(conv, initSel, convID, nil);
+
+        id TextContent = [NSClassFromString(@"AWEIMTextMessageContent") alloc];
+        SEL tiSel = NSSelectorFromString(@"initWithText:");
+        id content = ((id(*)(id,SEL,NSString*))objc_msgSend)(TextContent, tiSel, text);
+
+        id SendModel = [NSClassFromString(@"AWEIMSendTextMessageModel") alloc];
+        SEL smSel = NSSelectorFromString(@"initWithContent:");
+        id model = ((id(*)(id,SEL,id))objc_msgSend)(SendModel, smSel, content);
+
+        id sendCtrl = _msg0(ModuleSvc, NSSelectorFromString(@"sendMessageController"));
+        SEL sendSel = NSSelectorFromString(@"sendMessage:conversation:");
+        if ([sendCtrl respondsToSelector:sendSel])
+            ((void(*)(id,SEL,id,id))objc_msgSend)(sendCtrl, sendSel, model, conv);
+        LOG(@\"[DM] Sent to %@: %@\", userID, text);
+    } else {
+        // Need to create conversation first
+        NSSet *participants = [NSSet setWithObject:userID];
+        SEL createSel = NSSelectorFromString(@\"createConversationWithOtherParticipants:type:inInbox:completion:\");
+        if ([ConvCls respondsToSelector:createSel]) {
+            ((void(*)(id,SEL,NSSet*,NSInteger,NSInteger,void(^)(id,NSError*)))objc_msgSend)
+                (ConvCls, createSel, participants, 1, 0, ^(id apiConv, NSError *err) {
+                    if (!err && apiConv) {
+                        // Now send via the real conversation
+                        id TextContent2 = [NSClassFromString(@\"AWEIMTextMessageContent\") alloc];
+                        id content2 = ((id(*)(id,SEL,NSString*))objc_msgSend)(TextContent2,
+                            NSSelectorFromString(@\"initWithText:\"), text);
+                        id SendModel2 = [NSClassFromString(@\"AWEIMSendTextMessageModel\") alloc];
+                        id model2 = ((id(*)(id,SEL,id))objc_msgSend)(SendModel2,
+                            NSSelectorFromString(@\"initWithContent:\"), content2);
+                        id sc = _msg0(ModuleSvc, NSSelectorFromString(@\"sendMessageController\"));
+                        ((void(*)(id,SEL,id,id))objc_msgSend)(sc,
+                            NSSelectorFromString(@\"sendMessage:conversation:\"), model2, apiConv);
+                        LOG(@\"[DM] Created+Sent to %@: %@\", userID, text);
+                    }
+                });
+        }
+    }
+}
+
 - (void)onAutoDM {
     gAutoDM = !gAutoDM;
     if (gAutoDM) {

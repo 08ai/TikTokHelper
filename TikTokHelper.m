@@ -84,20 +84,13 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     if (gOrigSetLastMsg) ((void(*)(id,SEL,id))gOrigSetLastMsg)(self, _cmd, message);
     if (!gAutoDM || !message) return;
     @try {
-        // 跳过自己发的消息
-        id sender = _msg0(message, NSSelectorFromString(@"sender"));
-        if (sender) {
-            id isSelf = _msg0(sender, NSSelectorFromString(@"isSelf"));
-            if (isSelf && [isSelf boolValue]) return;
-        }
         // 防重复
-        NSString *key = [NSString stringWithFormat:@"%@", message];
-        if ([gRepliedMsgIDs containsObject:key]) return;
-        [gRepliedMsgIDs addObject:key];
-        // 限频: 最多 1 秒内回复一次
+        if ([gRepliedMsgIDs containsObject:self]) return;
+        [gRepliedMsgIDs addObject:self];
+        // 限频
         static NSTimeInterval lastReply = 0;
         NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-        if (now - lastReply < 1.0) return;
+        if (now - lastReply < 2.0) return;
         lastReply = now;
         [[[TikTokHelper alloc] init] sendReplyToTIMOConv:self];
     } @catch (NSException *e) {}
@@ -122,16 +115,18 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 }
 
 - (void)sendReplyToTIMOConvID:(NSString *)cid {
-    Class TC = NSClassFromString(@"AWEIMTextMessageContent");
-    Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
-    Class MS = NSClassFromString(@"AWEIMModuleService");
-    if (!TC||!SM||!MS) return;
-    id c = ((id(*)(id,SEL,NSString*))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:"), @"你好");
-    id m = ((id(*)(id,SEL,id))objc_msgSend)([SM alloc], NSSelectorFromString(@"initWithContent:"), c);
-    id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
-    SEL addSel = NSSelectorFromString(@"addMessageLocally:conversationID:");
-    if ([sc respondsToSelector:addSel])
-        ((void(*)(id,SEL,id,NSString*))objc_msgSend)(sc, addSel, m, cid);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        Class TC = NSClassFromString(@"AWEIMTextMessageContent");
+        Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
+        Class MS = NSClassFromString(@"AWEIMModuleService");
+        if (!TC||!SM||!MS) return;
+        id c = ((id(*)(id,SEL,NSString*))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:"), @"你好");
+        id m = ((id(*)(id,SEL,id))objc_msgSend)([SM alloc], NSSelectorFromString(@"initWithContent:"), c);
+        id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
+        SEL addSel = NSSelectorFromString(@"addMessageLocally:conversationID:");
+        if ([sc respondsToSelector:addSel])
+            ((void(*)(id,SEL,id,NSString*))objc_msgSend)(sc, addSel, m, cid);
+    });
 }
 
 // ─── 创建按钮 ───

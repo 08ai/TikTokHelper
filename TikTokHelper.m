@@ -70,18 +70,6 @@ static void setStatus(NSString *s) {
     dispatch_async(dispatch_get_main_queue(), ^{ gStatusLabel.text = s; });
 }
 
-// ==================== 覆盖窗口 ====================
-static UIWindow *gOverlayWin;
-
-static UIWindow *createOverlayWindow(void) {
-    UIWindow *w = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-    w.windowLevel = UIWindowLevelAlert + 1; // 浮在 TikTok 上面
-    w.backgroundColor = [UIColor clearColor];
-    w.userInteractionEnabled = YES;
-    w.hidden = NO;
-    return w;
-}
-
 // ==================== 界面 ====================
 @interface TikTokHelper : NSObject
 @end
@@ -260,16 +248,22 @@ static UIWindow *createOverlayWindow(void) {
 }
 
 // ==================== 构建 UI ====================
+- (void)bringToFront {
+    if (gToggleBtn) [gWin bringSubviewToFront:gToggleBtn];
+    if (gPanel && gExpanded) [gWin bringSubviewToFront:gPanel];
+}
+
 - (void)buildUI {
-    gOverlayWin = createOverlayWindow();
-    gWin = gOverlayWin;
+    gWin = keyWin();
+    if (!gWin) { dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),^{[self buildUI];}); return; }
+
     CGFloat SW = [UIScreen mainScreen].bounds.size.width;
 
-    // ── 红色展开按钮 ──
+    // ── 红色展开按钮 (在 keyWindow 上) ──
     gToggleBtn = [self makeBtn:@"展开" frame:CGRectMake(SW-95,120,85,48) bg:rgb(0.92,0.1,0.1,0.92) fs:18];
     gToggleBtn.layer.cornerRadius = 16;
     [gToggleBtn addTarget:self action:@selector(onToggle) forControlEvents:UIControlEventTouchUpInside];
-    [gOverlayWin addSubview:gToggleBtn];
+    [gWin addSubview:gToggleBtn];
 
     // ── 黄色面板 ──
     CGFloat pW=175, pH=270;
@@ -279,7 +273,7 @@ static UIWindow *createOverlayWindow(void) {
     gPanel.layer.borderWidth = 3;
     gPanel.layer.borderColor = [UIColor whiteColor].CGColor;
     gPanel.alpha = 0;
-    [gOverlayWin addSubview:gPanel];
+    [gWin addSubview:gPanel];
 
     // 标题
     UILabel *tl = [[UILabel alloc] initWithFrame:CGRectMake(10,8,pW-20,18)];
@@ -319,8 +313,14 @@ __attribute__((constructor))
 static void THInit(void) {
     gRepliedMsgIDs = [NSMutableSet set];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        [[[TikTokHelper alloc] init] buildUI];
+        TikTokHelper *th = [[TikTokHelper alloc] init];
+        [th buildUI];
         LOG(@"注入完成!");
+
+        // bringToFront 定时器 (每 2 秒)
+        [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *t) {
+            [th bringToFront];
+        }];
 
         // 自动私信轮询 (每 500ms)
         [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *t) {

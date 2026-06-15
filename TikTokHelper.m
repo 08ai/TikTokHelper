@@ -152,76 +152,62 @@ static void setStatus(NSString *s) {
     }
 }
 
-// ==================== 自动私信 ====================
+// ==================== 自动私信 (Hook lastMessage 方式) ====================
+static IMP gOrigSetLastMessage = NULL;
+
+static void hooked_setLastMessage(id self, SEL _cmd, id message) {
+    if (gOrigSetLastMessage)
+        ((void(*)(id,SEL,id))gOrigSetLastMessage)(self, _cmd, message);
+    if (!gAutoDM || !message) return;
+    @try {
+        id sender = _msg0(message, NSSelectorFromString(@"sender"));
+        if (sender) {
+            NSNumber *isSelf = _msg0(sender, NSSelectorFromString(@"isSelf"));
+            if (isSelf && isSelf.boolValue) return;
+        }
+        NSString *msgId = [message description];
+        if ([gRepliedMsgIDs containsObject:msgId]) return;
+        [gRepliedMsgIDs addObject:msgId];
+        NSString *text = _msg0(message, NSSelectorFromString(@"text"));
+        LOG(@"[DM] 新消息: %@", text);
+        [[[TikTokHelper alloc] init] sendReply:@"你好" toConversation:self];
+        LOG(@"[DM] 已回复: 你好");
+    } @catch (NSException *e) {}
+}
+
++ (void)installMessageHook {
+    Class ConvCls = NSClassFromString(@"AWEIMMessageConversation");
+    if (!ConvCls) return;
+    SEL sel = NSSelectorFromString(@"setLastMessage:");
+    Method m = class_getInstanceMethod(ConvCls, sel);
+    if (!m) { sel = NSSelectorFromString(@"updateLastMessage:"); m = class_getInstanceMethod(ConvCls, sel); }
+    if (!m) return;
+    gOrigSetLastMessage = method_getImplementation(m);
+    method_setImplementation(m, (IMP)hooked_setLastMessage);
+    LOG(@"[DM] Hook: %@", NSStringFromSelector(sel));
+}
+
 - (void)sendReply:(NSString *)text toConversation:(id)conv {
     Class TextContent = NSClassFromString(@"AWEIMTextMessageContent");
     Class SendModel = NSClassFromString(@"AWEIMSendTextMessageModel");
     Class ModuleSvc = NSClassFromString(@"AWEIMModuleService");
     if (!TextContent || !SendModel || !ModuleSvc) return;
-
     id content = [[TextContent alloc] init];
     SEL initSel = NSSelectorFromString(@"initWithText:");
     if ([content respondsToSelector:initSel])
         content = ((id(*)(id,SEL,NSString*))objc_msgSend)(content, initSel, text);
-
     id model = [[SendModel alloc] init];
     SEL modelSel = NSSelectorFromString(@"initWithContent:");
     if ([model respondsToSelector:modelSel])
         model = ((id(*)(id,SEL,id))objc_msgSend)(model, modelSel, content);
-
     id sendCtrl = _msg0(ModuleSvc, NSSelectorFromString(@"sendMessageController"));
     if (!sendCtrl) return;
-
     SEL sendSel = NSSelectorFromString(@"sendMessage:conversation:");
     if ([sendCtrl respondsToSelector:sendSel])
         ((void(*)(id,SEL,id,id))objc_msgSend)(sendCtrl, sendSel, model, conv);
 }
 
-- (void)checkInboxAndReply {
-    if (!gAutoDM) return;
-    @try {
-        // CoreData: fetch TIMOConversation
-        id app = [UIApplication sharedApplication];
-        id delegate = [app delegate];
-        id moc = _msg0(delegate, NSSelectorFromString(@"managedObjectContext"));
-        if (!moc) {
-            id container = _msg0(delegate, NSSelectorFromString(@"persistentContainer"));
-            if (container) moc = _msg0(container, NSSelectorFromString(@"viewContext"));
-        }
-        if (!moc) return;
-
-        NSFetchRequest *req = [[NSFetchRequest alloc] init];
-        NSEntityDescription *entity = [NSEntityDescription entityForName:@"TIMOConversation" inManagedObjectContext:moc];
-        if (!entity) return;
-        [req setEntity:entity];
-
-        NSArray *convs = [moc executeFetchRequest:req error:nil];
-        for (id conv in convs) {
-            id lastMsg = _msg0(conv, NSSelectorFromString(@"lastMessage"));
-            if (!lastMsg) continue;
-
-            id sender = _msg0(lastMsg, NSSelectorFromString(@"sender"));
-            if (!sender) continue;
-
-            // 跳过自己发的消息
-            NSNumber *isSelf = _msg0(sender, NSSelectorFromString(@"isSelf"));
-            if (isSelf && isSelf.boolValue) continue;
-
-            // 防重复回复
-            NSString *msgId = [lastMsg description];
-            if ([gRepliedMsgIDs containsObject:msgId]) continue;
-            [gRepliedMsgIDs addObject:msgId];
-
-            NSString *msgText = _msg0(lastMsg, NSSelectorFromString(@"text"));
-            LOG(@"新消息: %@", msgText);
-
-            [self sendReply:@"你好" toConversation:conv];
-            LOG(@"已自动回复: 你好");
-        }
-    } @catch (NSException *e) {
-        LOG(@"inbox error: %@", e);
-    }
-}
+- (void)checkInboxAndReply { /* Hook handles this */ }
 
 - (void)onAutoDM {
     gAutoDM = !gAutoDM;
@@ -253,7 +239,9 @@ static void setStatus(NSString *s) {
     if (gPanel && gExpanded) [gWin bringSubviewToFront:gPanel];
 }
 
+static BOOL _hookInstalled = NO;
 - (void)buildUI {
+    if (!_hookInstalled) { [TikTokHelper installMessageHook]; _hookInstalled = YES; }
     gWin = keyWin();
     if (!gWin) { dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),^{[self buildUI];}); return; }
 

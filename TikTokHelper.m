@@ -142,15 +142,15 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 - (void)buildUI {
     gWin=keyWin(); if(!gWin){dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),^{[self buildUI];});return;}
-    // 找内容层
-    UIView *cv = gWin;
+    // 把按钮加到 TikTok 内容层里面，确保能接收触摸
+    UIView *contentView = gWin;
     if (gWin.subviews.count > 0) {
-        UIView *tv = gWin.subviews[0];
-        cv = tv.subviews.count > 0 ? tv.subviews.lastObject : tv;
+        UIView *tv = gWin.subviews[0]; // UITransitionView
+        contentView = tv.subviews.count > 0 ? tv.subviews.lastObject : tv;
     }
     CGFloat SW=[UIScreen mainScreen].bounds.size.width;
     gToggleBtn=[self makeBtn:@"展开" frame:CGRectMake(SW-95,120,85,48) bg:rgb(.92,.1,.1,.92) fs:18];
-    gToggleBtn.layer.cornerRadius=16;[gToggleBtn addTarget:self action:@selector(onToggle) forControlEvents:1<<6];[cv addSubview:gToggleBtn];
+    gToggleBtn.layer.cornerRadius=16;[gToggleBtn addTarget:self action:@selector(onToggle) forControlEvents:1<<6];[contentView addSubview:gToggleBtn];
     CGFloat pW=175,pH=240;
     gPanel=[[UIView alloc]initWithFrame:CGRectMake(100,70,pW,pH)];
     gPanel.backgroundColor=rgb(1,.85,.02,.95);gPanel.layer.cornerRadius=14;

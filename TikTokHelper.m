@@ -1,4 +1,4 @@
-// TikTokHelper.m �?TikTok 自动关注 + 自动私信 dylib
+// TikTokHelper.m — TikTok 自动关注 + 自动私信 dylib
 //
 // Mac 编译:
 //   SDK=$(xcrun --sdk iphoneos --show-sdk-path)
@@ -18,7 +18,7 @@
 static id _msg0(id t, SEL s) { if(!t||![t respondsToSelector:s])return nil; return ((id(*)(id,SEL))objc_msgSend)(t,s); }
 static id _msg1(id t, SEL s, id a) { if(!t||![t respondsToSelector:s])return nil; return ((id(*)(id,SEL,id))objc_msgSend)(t,s,a); }
 
-// ==================== 全局状�?====================
+// ==================== 全局状态 ====================
 static UIWindow *gWin;
 static UIButton *gToggleBtn, *gFollowBtn, *gDMBtn, *gNurtureBtn;
 static UIView   *gPanel;
@@ -65,7 +65,7 @@ static NSArray<NSString *> *fetchUIDs(void) {
     return uids;
 }
 
-// ==================== 更新状态标�?====================
+// ==================== 更新状态标签 ====================
 static void setStatus(NSString *s) {
     dispatch_async(dispatch_get_main_queue(), ^{ gStatusLabel.text = s; });
 }
@@ -124,9 +124,9 @@ static void setStatus(NSString *s) {
         setStatus(@"获取用户列表...");
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
             NSArray *uids = fetchUIDs();
-            if (uids.count == 0) { setStatus(@"无用�?); gAutoFollow=NO; return; }
+            if (uids.count == 0) { setStatus(@"无用户"); gAutoFollow=NO; return; }
             dispatch_async(dispatch_get_main_queue(), ^{
-                setStatus([NSString stringWithFormat:@"开始关�?%lu �?,(unsigned long)uids.count]);
+                setStatus([NSString stringWithFormat:@"开始关注 %lu 人",(unsigned long)uids.count]);
             });
             for (NSInteger i = 0; i < uids.count && gAutoFollow; i++) {
                 NSString *uid = uids[i];
@@ -137,7 +137,7 @@ static void setStatus(NSString *s) {
                 [NSThread sleepForTimeInterval:0.3]; // 300ms 间隔
             }
             dispatch_async(dispatch_get_main_queue(), ^{
-                setStatus([NSString stringWithFormat:@"完成 %lu �?,(unsigned long)uids.count]);
+                setStatus([NSString stringWithFormat:@"完成 %lu 人",(unsigned long)uids.count]);
                 if (gAutoFollow) {
                     gAutoFollow = NO;
                     [gFollowBtn setTitle:@"自动关注" forState:UIControlStateNormal];
@@ -148,7 +148,7 @@ static void setStatus(NSString *s) {
     } else {
         [gFollowBtn setTitle:@"自动关注" forState:UIControlStateNormal];
         gFollowBtn.backgroundColor = rgb(0.18,0.50,0.92,0.9);
-        setStatus(@"已停止关�?);
+        setStatus(@"已停止关注");
     }
 }
 
@@ -166,14 +166,14 @@ static void hooked_onMessageAdded(id self, SEL _cmd, id message, id convID) {
         if ([gRepliedMsgIDs containsObject:msgId]) return;
         [gRepliedMsgIDs addObject:msgId];
         NSString *text = _msg0(message, NSSelectorFromString(@"text"));
-        LOG(@"[DM] 新消�? %@", text);
+        LOG(@"[DM] 新消息: %@", text);
         // Find conversation by ID and reply
         id conv = _msg0(self, NSSelectorFromString(@"conversationForID:"));
         if (!conv) conv = _msg1(NSClassFromString(@"AWEIMMessageConversationCache"),
             NSSelectorFromString(@"conversationForID:"), convID);
         if (conv) {
             [[[TikTokHelper alloc] init] sendReply:@"你好" toConversation:conv];
-            LOG(@"[DM] 已回�? 你好");
+            LOG(@"[DM] 已回复: 你好");
         }
     } @catch (NSException *e) {}
 }
@@ -218,48 +218,43 @@ static void hooked_onMessageAdded(id self, SEL _cmd, id message, id convID) {
     Class ModuleSvc = NSClassFromString(@"AWEIMModuleService");
     Class ConvCls = NSClassFromString(@"AWEIMMessageConversation");
     if (!ModuleSvc || !ConvCls) return;
-
-    // 1. Get or create conversation for this user
     NSString *convID = _msg1(ModuleSvc, NSSelectorFromString(@"getSingleChatConversationIDFromUserID:"), userID);
     if (convID) {
-        // Conversation exists - create object and send
         id conv = [[ConvCls alloc] init];
         SEL initSel = NSSelectorFromString(@"initWithConversationID:options:");
         if ([conv respondsToSelector:initSel])
             conv = ((id(*)(id,SEL,NSString*,id))objc_msgSend)(conv, initSel, convID, nil);
-
-        id TextContent = [NSClassFromString(@"AWEIMTextMessageContent") alloc];
+        id content = [[NSClassFromString(@"AWEIMTextMessageContent") alloc] init];
         SEL tiSel = NSSelectorFromString(@"initWithText:");
-        id content = ((id(*)(id,SEL,NSString*))objc_msgSend)(TextContent, tiSel, text);
-
-        id SendModel = [NSClassFromString(@"AWEIMSendTextMessageModel") alloc];
+        if ([content respondsToSelector:tiSel])
+            content = ((id(*)(id,SEL,NSString*))objc_msgSend)(content, tiSel, text);
+        id model = [[NSClassFromString(@"AWEIMSendTextMessageModel") alloc] init];
         SEL smSel = NSSelectorFromString(@"initWithContent:");
-        id model = ((id(*)(id,SEL,id))objc_msgSend)(SendModel, smSel, content);
-
+        if ([model respondsToSelector:smSel])
+            model = ((id(*)(id,SEL,id))objc_msgSend)(model, smSel, content);
         id sendCtrl = _msg0(ModuleSvc, NSSelectorFromString(@"sendMessageController"));
         SEL sendSel = NSSelectorFromString(@"sendMessage:conversation:");
         if ([sendCtrl respondsToSelector:sendSel])
             ((void(*)(id,SEL,id,id))objc_msgSend)(sendCtrl, sendSel, model, conv);
-        LOG(@\"[DM] Sent to %@: %@\", userID, text);
+        LOG(@"DM sent to %@: %@", userID, text);
     } else {
-        // Need to create conversation first
         NSSet *participants = [NSSet setWithObject:userID];
-        SEL createSel = NSSelectorFromString(@\"createConversationWithOtherParticipants:type:inInbox:completion:\");
+        SEL createSel = NSSelectorFromString(@"createConversationWithOtherParticipants:type:inInbox:completion:");
         if ([ConvCls respondsToSelector:createSel]) {
             ((void(*)(id,SEL,NSSet*,NSInteger,NSInteger,void(^)(id,NSError*)))objc_msgSend)
                 (ConvCls, createSel, participants, 1, 0, ^(id apiConv, NSError *err) {
                     if (!err && apiConv) {
-                        // Now send via the real conversation
-                        id TextContent2 = [NSClassFromString(@\"AWEIMTextMessageContent\") alloc];
-                        id content2 = ((id(*)(id,SEL,NSString*))objc_msgSend)(TextContent2,
-                            NSSelectorFromString(@\"initWithText:\"), text);
-                        id SendModel2 = [NSClassFromString(@\"AWEIMSendTextMessageModel\") alloc];
-                        id model2 = ((id(*)(id,SEL,id))objc_msgSend)(SendModel2,
-                            NSSelectorFromString(@\"initWithContent:\"), content2);
-                        id sc = _msg0(ModuleSvc, NSSelectorFromString(@\"sendMessageController\"));
-                        ((void(*)(id,SEL,id,id))objc_msgSend)(sc,
-                            NSSelectorFromString(@\"sendMessage:conversation:\"), model2, apiConv);
-                        LOG(@\"[DM] Created+Sent to %@: %@\", userID, text);
+                        id c2 = [[NSClassFromString(@"AWEIMTextMessageContent") alloc] init];
+                        if ([c2 respondsToSelector:NSSelectorFromString(@"initWithText:")])
+                            c2 = ((id(*)(id,SEL,NSString*))objc_msgSend)(c2, NSSelectorFromString(@"initWithText:"), text);
+                        id m2 = [[NSClassFromString(@"AWEIMSendTextMessageModel") alloc] init];
+                        if ([m2 respondsToSelector:NSSelectorFromString(@"initWithContent:")])
+                            m2 = ((id(*)(id,SEL,id))objc_msgSend)(m2, NSSelectorFromString(@"initWithContent:"), c2);
+                        id sc = _msg0(ModuleSvc, NSSelectorFromString(@"sendMessageController"));
+                        SEL ss = NSSelectorFromString(@"sendMessage:conversation:");
+                        if ([sc respondsToSelector:ss])
+                            ((void(*)(id,SEL,id,id))objc_msgSend)(sc, ss, m2, apiConv);
+                        LOG(@"DM created+sent to %@", userID);
                     }
                 });
         }
@@ -271,12 +266,12 @@ static void hooked_onMessageAdded(id self, SEL _cmd, id message, id convID) {
     if (gAutoDM) {
         [gDMBtn setTitle:@"停止私信" forState:UIControlStateNormal];
         gDMBtn.backgroundColor = rgb(0.85,0.25,0.25,0.9);
-        setStatus(@"自动私信已开�?);
+        setStatus(@"自动私信已开启");
         LOG(@"Auto-DM ON");
     } else {
         [gDMBtn setTitle:@"自动私信" forState:UIControlStateNormal];
         gDMBtn.backgroundColor = rgb(0.15,0.72,0.35,0.9);
-        setStatus(@"自动私信已关�?);
+        setStatus(@"自动私信已关闭");
         LOG(@"Auto-DM OFF");
     }
 }
@@ -317,7 +312,7 @@ static BOOL _hookInstalled = NO;
 
     CGFloat SW = [UIScreen mainScreen].bounds.size.width;
 
-    // ── 红色展开按钮 (�?contentView �? ──
+    // ── 红色展开按钮 (在 contentView 上) ──
     gToggleBtn = [self makeBtn:@"展开" frame:CGRectMake(SW-95,120,85,48) bg:rgb(0.92,0.1,0.1,0.92) fs:18];
     gToggleBtn.layer.cornerRadius = 16;
     [gToggleBtn addTarget:self action:@selector(onToggle) forControlEvents:UIControlEventTouchUpInside];
@@ -346,7 +341,8 @@ static BOOL _hookInstalled = NO;
     gStatusLabel.numberOfLines = 2;
     [gPanel addSubview:gStatusLabel];
 
-    // 3 个按�?    CGFloat bX=12, bW=pW-24, bH=50, g=6, sY=30;
+    // 3 个按钮
+    CGFloat bX=12, bW=pW-24, bH=50, g=6, sY=30;
 
     gFollowBtn = [self makeBtn:@"自动关注" frame:CGRectMake(bX,sY,bW,bH) bg:rgb(0.18,0.50,0.92,0.9) fs:16];
     [gFollowBtn addTarget:self action:@selector(onAutoFollow) forControlEvents:UIControlEventTouchUpInside];
@@ -374,12 +370,12 @@ static void THInit(void) {
         [th buildUI];
         LOG(@"注入完成!");
 
-        // bringToFront 定时�?(�?2 �?
+        // bringToFront 定时器 (每 2 秒)
         [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *t) {
             [th bringToFront];
         }];
 
-        // 自动私信轮询 (�?500ms)
+        // 自动私信轮询 (每 500ms)
         [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *t) {
             [[[TikTokHelper alloc] init] checkInboxAndReply];
         }];

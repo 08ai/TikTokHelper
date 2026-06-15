@@ -70,6 +70,18 @@ static void setStatus(NSString *s) {
     dispatch_async(dispatch_get_main_queue(), ^{ gStatusLabel.text = s; });
 }
 
+// ==================== 覆盖窗口 ====================
+static UIWindow *gOverlayWin;
+
+static UIWindow *createOverlayWindow(void) {
+    UIWindow *w = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+    w.windowLevel = UIWindowLevelAlert + 1; // 浮在 TikTok 上面
+    w.backgroundColor = [UIColor clearColor];
+    w.userInteractionEnabled = YES;
+    w.hidden = NO;
+    return w;
+}
+
 // ==================== 界面 ====================
 @interface TikTokHelper : NSObject
 @end
@@ -242,23 +254,22 @@ static void setStatus(NSString *s) {
 - (void)onAutoNurture {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"自动养号" message:@"TODO" preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    UIViewController *vc = gWin.rootViewController;
+    UIViewController *vc = keyWin().rootViewController;
     while (vc.presentedViewController) vc = vc.presentedViewController;
     [vc presentViewController:a animated:YES completion:nil];
 }
 
 // ==================== 构建 UI ====================
 - (void)buildUI {
-    gWin = keyWin();
-    if (!gWin) { dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),^{[self buildUI];}); return; }
-
+    gOverlayWin = createOverlayWindow();
+    gWin = gOverlayWin;
     CGFloat SW = [UIScreen mainScreen].bounds.size.width;
 
     // ── 红色展开按钮 ──
     gToggleBtn = [self makeBtn:@"展开" frame:CGRectMake(SW-95,120,85,48) bg:rgb(0.92,0.1,0.1,0.92) fs:18];
     gToggleBtn.layer.cornerRadius = 16;
     [gToggleBtn addTarget:self action:@selector(onToggle) forControlEvents:UIControlEventTouchUpInside];
-    [gWin addSubview:gToggleBtn];
+    [gOverlayWin addSubview:gToggleBtn];
 
     // ── 黄色面板 ──
     CGFloat pW=175, pH=270;
@@ -268,7 +279,7 @@ static void setStatus(NSString *s) {
     gPanel.layer.borderWidth = 3;
     gPanel.layer.borderColor = [UIColor whiteColor].CGColor;
     gPanel.alpha = 0;
-    [gWin addSubview:gPanel];
+    [gOverlayWin addSubview:gPanel];
 
     // 标题
     UILabel *tl = [[UILabel alloc] initWithFrame:CGRectMake(10,8,pW-20,18)];

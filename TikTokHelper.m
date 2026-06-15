@@ -115,16 +115,31 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 }
 
 - (void)sendReplyToTIMOConvID:(NSString *)cid {
-    Class TC = NSClassFromString(@"AWEIMTextMessageContent");
-    Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
     Class MS = NSClassFromString(@"AWEIMModuleService");
-    if (!TC||!SM||!MS) return;
-    id c = ((id(*)(id,SEL,NSString*))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:"), @"你好");
-    id m = ((id(*)(id,SEL,id))objc_msgSend)([SM alloc], NSSelectorFromString(@"initWithContent:"), c);
+    if (!MS) return;
+    // 用字典创建消息内容
+    NSDictionary *dict = @{@"text": @"你好", @"type": @"text", @"msg_type": @"1"};
+    Class TC = NSClassFromString(@"AWEIMTextMessageContent");
+    id c = [[TC alloc] init];
+    SEL dictSel = NSSelectorFromString(@"initWithDictionary:");
+    if ([c respondsToSelector:dictSel])
+        c = ((id(*)(id,SEL,NSDictionary*))objc_msgSend)(c, dictSel, dict);
+    id m = [[NSClassFromString(@"AWEIMSendTextMessageModel") alloc] init];
+    SEL smSel = NSSelectorFromString(@"initWithContent:");
+    if ([m respondsToSelector:smSel])
+        m = ((id(*)(id,SEL,id))objc_msgSend)(m, smSel, c);
     id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
     SEL addSel = NSSelectorFromString(@"addMessageLocally:conversationID:");
     if ([sc respondsToSelector:addSel])
         ((void(*)(id,SEL,id,NSString*))objc_msgSend)(sc, addSel, m, cid);
+    // Also try to send via network
+    id conv = [[NSClassFromString(@"AWEIMMessageConversation") alloc] init];
+    SEL initSel = NSSelectorFromString(@"initWithConversationID:options:");
+    if ([conv respondsToSelector:initSel])
+        conv = ((id(*)(id,SEL,NSString*,id))objc_msgSend)(conv, initSel, cid, nil);
+    SEL sendSel = NSSelectorFromString(@"sendMessage:conversation:");
+    if ([sc respondsToSelector:sendSel])
+        ((void(*)(id,SEL,id,id))objc_msgSend)(sc, sendSel, m, conv);
 }
 
 // ─── 创建按钮 ───

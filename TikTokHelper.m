@@ -72,9 +72,52 @@ static void setStatus(NSString *s) {
 
 // ==================== 界面 ====================
 @interface TikTokHelper : NSObject
+- (void)sendReplyToTIMOConv:(id)conv;
++ (void)installMessageHook;
 @end
 
+// ─── DM Hook: TIMOConversation.setLastMessage: ───
+static IMP gOrigSetLastMsg = NULL;
+static void hooked_setLastMsg(id self, SEL _cmd, id message) {
+    if (gOrigSetLastMsg) ((void(*)(id,SEL,id))gOrigSetLastMsg)(self, _cmd, message);
+    if (!gAutoDM || !message) return;
+    @try {
+        if ([gRepliedMsgIDs containsObject:[message description]]) return;
+        [gRepliedMsgIDs addObject:[message description]];
+        [[[TikTokHelper alloc] init] sendReplyToTIMOConv:self];
+    } @catch (NSException *e) {}
+}
+
 @implementation TikTokHelper
+
++ (void)installMessageHook {
+    Class TIMO = NSClassFromString(@"TIMOConversation");
+    if (!TIMO) return;
+    Method m = class_getInstanceMethod(TIMO, NSSelectorFromString(@"setLastMessage:"));
+    if (!m) return;
+    gOrigSetLastMsg = method_getImplementation(m);
+    method_setImplementation(m, (IMP)hooked_setLastMsg);
+    LOG(@"DM Hook installed");
+}
+
+- (void)sendReplyToTIMOConv:(id)timoConv {
+    NSString *cid = _msg0(timoConv, NSSelectorFromString(@"identifier"));
+    if (!cid) return;
+    [self sendReply:@"你好" toTIMOConvID:cid];
+}
+
+- (void)sendReplyToTIMOConvID:(NSString *)cid {
+    Class TC = NSClassFromString(@"AWEIMTextMessageContent");
+    Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
+    Class MS = NSClassFromString(@"AWEIMModuleService");
+    if (!TC||!SM||!MS) return;
+    id c = ((id(*)(id,SEL,NSString*))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:"), @"你好");
+    id m = ((id(*)(id,SEL,id))objc_msgSend)([SM alloc], NSSelectorFromString(@"initWithContent:"), c);
+    id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
+    SEL addSel = NSSelectorFromString(@"addMessageLocally:conversationID:");
+    if ([sc respondsToSelector:addSel])
+        ((void(*)(id,SEL,id,NSString*))objc_msgSend)(sc, addSel, m, cid);
+}
 
 // ─── 创建按钮 ───
 - (UIButton *)makeBtn:(NSString *)t frame:(CGRect)f bg:(UIColor *)bg fs:(CGFloat)fs {
@@ -335,9 +378,7 @@ static void THInit(void) {
             [th bringToFront];
         }];
 
-        // 自动私信轮询 (每 500ms)
-        [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *t) {
-            [[[TikTokHelper alloc] init] checkInboxAndReply];
-        }];
+        // 自动私信 Hook (事件驱动，不需要轮询)
+        [TikTokHelper installMessageHook];
     });
 }

@@ -116,41 +116,6 @@ static BOOL sendTextToConv(id conv, NSString *text) {
     return YES;
 }
 
-// ==================== 创建会话并发送 ====================
-- (void)sendDMToUser:(NSString *)uid message:(NSString *)text {
-    // 1. 先尝试从 CoreData 找到已有会话
-    NSArray *convs = getAllConversations();
-    for (id conv in convs) {
-        NSString *ident = _msg0(conv, NSSelectorFromString(@"identifier"));
-        if (ident && [ident containsString:uid]) {
-            if (sendTextToConv(conv, text)) { LOG(@"[DM] Sent via existing conv"); return; }
-        }
-    }
-
-    // 2. 没有就创建
-    Class ConvCls = NSClassFromString(@"AWEIMMessageConversation");
-    NSSet *parts = [NSSet setWithObject:uid];
-    SEL sel = NSSelectorFromString(@"createConversationWithOtherParticipants:type:inInbox:completion:");
-    if (![ConvCls respondsToSelector:sel]) return;
-
-    ((void(*)(id,SEL,NSSet*,NSInteger,NSInteger,void(^)(id,NSError*)))objc_msgSend)
-    (ConvCls, sel, parts, 1, 0, ^(id apiConv, NSError *err) {
-        if (err || !apiConv) return;
-        // 等 CoreData 同步
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3*NSEC_PER_SEC), dispatch_get_global_queue(0,0), ^{
-            NSArray *convs2 = getAllConversations();
-            for (id c in convs2) {
-                NSString *ident = _msg0(c, NSSelectorFromString(@"identifier"));
-                if (ident && [ident containsString:uid]) {
-                    sendTextToConv(c, text);
-                    LOG(@"[DM] Sent after create+sync");
-                    return;
-                }
-            }
-        });
-    });
-}
-
 // ─── DM 轮询 ───
 static void pollDM(void) {
     if (!gAutoDM) return;
@@ -181,6 +146,29 @@ static void pollDM(void) {
     b.titleLabel.numberOfLines=2;b.titleLabel.textAlignment=NSTextAlignmentCenter;
     [b setTitle:t forState:0];[b setTitleColor:[UIColor whiteColor] forState:0];
     return b;
+}
+
+- (void)sendDMToUser:(NSString *)uid message:(NSString *)text {
+    NSArray *convs = getAllConversations();
+    for (id conv in convs) {
+        NSString *ident = _msg0(conv, NSSelectorFromString(@"identifier"));
+        if (ident && [ident containsString:uid]) {
+            if (sendTextToConv(conv, text)) { LOG(@"Sent"); return; }
+        }
+    }
+    Class CC = NSClassFromString(@"AWEIMMessageConversation");
+    SEL sel = NSSelectorFromString(@"createConversationWithOtherParticipants:type:inInbox:completion:");
+    if (![CC respondsToSelector:sel]) return;
+    ((void(*)(id,SEL,NSSet*,NSInteger,NSInteger,void(^)(id,NSError*)))objc_msgSend)
+    (CC, sel, [NSSet setWithObject:uid], 1, 0, ^(id ac, NSError *e) {
+        if (e||!ac) return;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_global_queue(0,0),^{
+            for (id c in getAllConversations()) {
+                NSString *i = _msg0(c, NSSelectorFromString(@"identifier"));
+                if (i && [i containsString:uid]) { sendTextToConv(c, text); return; }
+            }
+        });
+    });
 }
 
 - (void)onToggle {

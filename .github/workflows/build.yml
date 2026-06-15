@@ -14,7 +14,7 @@ jobs:
         run: |
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
           clang -arch arm64 -dynamiclib \
-            -framework Foundation -framework UIKit -framework CoreGraphics \
+            -framework Foundation -framework UIKit -framework CoreGraphics -framework CoreData \
             -fobjc-arc \
             -miphoneos-version-min=14.0 \
             -isysroot "$SDK" \

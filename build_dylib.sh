@@ -10,7 +10,7 @@ SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)
 if [ -z "$SDK" ]; then
     echo "未找到 iPhoneOS SDK，尝试使用本地 clang..."
     clang -arch arm64 -dynamiclib \
-        -framework Foundation -framework UIKit -framework CoreGraphics \
+        -framework Foundation -framework UIKit -framework CoreGraphics -framework CoreData \
         -fobjc-arc \
         -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk \
         -miphoneos-version-min=14.0 \
@@ -19,7 +19,7 @@ if [ -z "$SDK" ]; then
 else
     echo "SDK: $SDK"
     clang -arch arm64 -dynamiclib \
-        -framework Foundation -framework UIKit -framework CoreGraphics \
+        -framework Foundation -framework UIKit -framework CoreGraphics -framework CoreData \
         -fobjc-arc \
         -isysroot "$SDK" \
         -miphoneos-version-min=14.0 \

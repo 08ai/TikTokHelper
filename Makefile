@@ -7,7 +7,7 @@ LIBRARY_NAME = TikTokHelper
 
 TikTokHelper_FILES = TikTokHelper.m
 TikTokHelper_CFLAGS = -fobjc-arc
-TikTokHelper_FRAMEWORKS = Foundation UIKit
+TikTokHelper_FRAMEWORKS = Foundation UIKit CoreData
 TikTokHelper_INSTALL_PATH = /Library/MobileSubstrate/DynamicLibraries
 
 include $(THEOS_MAKE_PATH)/library.mk

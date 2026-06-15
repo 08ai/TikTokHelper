@@ -120,9 +120,14 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
         Class MS = NSClassFromString(@"AWEIMModuleService");
         if (!TC||!SM||!MS) return;
-        id c = [[TC alloc] performSelector:NSSelectorFromString(@"initWithText:") withObject:@"你好"];
-        if (!c) c = [[TC alloc] initWithText:@"你好"]; // fallback
-        id m = [[SM alloc] performSelector:NSSelectorFromString(@"initWithContent:") withObject:c];
+        id c = [[TC alloc] init];
+        SEL setText = NSSelectorFromString(@"setText:");
+        if ([c respondsToSelector:setText])
+            ((void(*)(id,SEL,NSString*))objc_msgSend)(c, setText, @"你好");
+        id m = [[SM alloc] init];
+        SEL setContent = NSSelectorFromString(@"setContent:");
+        if ([m respondsToSelector:setContent])
+            ((void(*)(id,SEL,id))objc_msgSend)(m, setContent, c);
         id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
         SEL addSel = NSSelectorFromString(@"addMessageLocally:conversationID:");
         if ([sc respondsToSelector:addSel])

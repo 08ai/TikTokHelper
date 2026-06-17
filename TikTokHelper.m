@@ -105,10 +105,6 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         static NSTimeInterval lastReply = 0;
         NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
         if (now - lastReply < 0.5) return;
-        // 冷却 0.5s
-        static NSTimeInterval lastReply = 0;
-        NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-        if (now - lastReply < 0.5) return;
         lastReply = now;
         // 用 msgPointer 去重
         NSString *msgKey = [NSString stringWithFormat:@"%p", message];

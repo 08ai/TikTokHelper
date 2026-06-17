@@ -36,6 +36,7 @@ static BOOL      gExpanded = NO;
 static BOOL      gAutoFollow = NO;
 static BOOL      gAutoDM = NO;
 static BOOL      gDedupOnce = YES;
+static BOOL      gIsSending = NO;
 static NSMutableSet *gRepliedIDs;
 
 // ==================== 颜色 ====================
@@ -120,12 +121,17 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         if (now - lastReply < 0.5) return;
         lastReply = now;
 
+        // 防重入: 正在发送中，跳过
+        if (gIsSending) return;
+
         // 去重复模式: 每个会话只回一次 (按 conversation 指针)
         if (gDedupOnce) {
             NSString *convKey = [NSString stringWithFormat:@"%p", self];
             if ([gRepliedIDs containsObject:convKey]) return;
             [gRepliedIDs addObject:convKey];
         }
+        // 加锁防止循环触发
+        gIsSending = YES;
         LOG(@"DM reply triggered");
 
         // 从远程获取话术
@@ -139,6 +145,10 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
             } @catch (NSException *e) {
                 LOG(@"sendViaTIMOCtrl crash: %@", e);
             }
+            // 发送完成，解锁（延迟 1s 等 setLastMessage 回调过去）
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                gIsSending = NO;
+            });
         });
     } @catch (NSException *e) {
         LOG(@"hook crash: %@", e);

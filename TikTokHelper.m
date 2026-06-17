@@ -103,9 +103,11 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
         if (now - lastReply < 0.5) return;
         lastReply = now;
-        dispatch_async(dispatch_get_main_queue(), ^{
+        dispatch_async(dispatch_get_global_queue(0,0), ^{
             NSString *text = fetchReplyText();
-            [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:text];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:text];
+            });
         });
     } @catch (NSException *e) {}
 }

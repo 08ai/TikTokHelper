@@ -84,15 +84,13 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     if (gOrigSetLastMsg) ((void(*)(id,SEL,id))gOrigSetLastMsg)(self, _cmd, message);
     if (!gAutoDM || !message) return;
     @try {
-        // 防重复
         if ([gRepliedMsgIDs containsObject:self]) return;
         [gRepliedMsgIDs addObject:self];
-        // 限频
         static NSTimeInterval lastReply = 0;
         NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
         if (now - lastReply < 2.0) return;
         lastReply = now;
-        [[[TikTokHelper alloc] init] sendReplyToTIMOConv:self];
+        [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:@"你好"];
     } @catch (NSException *e) {}
 }
 

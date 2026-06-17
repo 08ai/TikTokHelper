@@ -37,7 +37,13 @@ static BOOL      gAutoFollow = NO;
 static BOOL      gAutoDM = NO;
 static BOOL      gDedupOnce = YES;
 static BOOL      gIsSending = NO;
+static BOOL      gIsLoggedIn = NO;
 static NSMutableSet *gRepliedIDs;
+
+// 登录界面
+static UIView    *gLoginView;
+static UITextField *gUserField, *gPassField;
+static UILabel   *gLoginError;
 
 // ==================== 颜色 ====================
 static UIColor *rgb(CGFloat r, CGFloat g, CGFloat b, CGFloat a) {
@@ -212,6 +218,10 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 // ─── 展开/收起面板 ───
 - (void)onToggle {
+    if (!gIsLoggedIn) {
+        [UIView animateWithDuration:0.3 animations:^{ gLoginView.alpha = 1.0; }];
+        return;
+    }
     gExpanded = !gExpanded;
     [UIView animateWithDuration:0.25 animations:^{ gPanel.alpha = gExpanded?1.0:0.0; }];
     [gToggleBtn setTitle:gExpanded?@"收起":@"展开" forState:UIControlStateNormal];
@@ -308,10 +318,136 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     }
 }
 
+// ==================== 登录 ====================
+- (void)onLogin {
+    NSString *user = gUserField.text ?: @"";
+    NSString *pass = gPassField.text ?: @"";
+    if (user.length == 0 || pass.length == 0) {
+        gLoginError.text = @"请输入账号和密码";
+        return;
+    }
+    gLoginError.text = @"登录中...";
+    gLoginError.textColor = [UIColor whiteColor];
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
+        NSString *urlStr = [NSString stringWithFormat:@"http://107.148.2.130:5668/tiktoklogin.php?user=%@&pass=%@",
+                            [user stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]],
+                            [pass stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
+        NSString *resp = httpGet(urlStr);
+        BOOL ok = NO;
+        if (resp) {
+            NSData *data = [resp dataUsingEncoding:NSUTF8StringEncoding];
+            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            if (json && [json[@"status"] isEqual:@"ok"]) ok = YES;
+            // 也兼容返回 {"userid":"...","sms":"..."} 格式，只要不是错误就算成功
+            if (!ok && json && json[@"userid"]) ok = YES;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (ok) {
+                gIsLoggedIn = YES;
+                gLoginError.text = nil;
+                [UIView animateWithDuration:0.3 animations:^{ gLoginView.alpha = 0.0; }];
+                LOG(@"Login OK: %@", user);
+            } else {
+                gLoginError.text = @"密码错误或失效";
+                gLoginError.textColor = rgb(1,0.3,0.3,1);
+                LOG(@"Login FAIL: %@", user);
+            }
+        });
+    });
+}
+
+- (void)buildLogin {
+    CGFloat SW = [UIScreen mainScreen].bounds.size.width;
+    CGFloat SH = [UIScreen mainScreen].bounds.size.height;
+
+    // 半透明背景
+    gLoginView = [[UIView alloc] initWithFrame:CGRectMake(0,0,SW,SH)];
+    gLoginView.backgroundColor = rgb(0,0,0,0.65);
+    gLoginView.alpha = 0;
+    [gWin addSubview:gLoginView];
+
+    // 登录卡片
+    CGFloat cW = 260, cH = 260;
+    UIView *card = [[UIView alloc] initWithFrame:CGRectMake((SW-cW)/2,(SH-cH)/2-60,cW,cH)];
+    card.backgroundColor = rgb(0.15,0.15,0.18,0.95);
+    card.layer.cornerRadius = 16;
+    card.layer.borderWidth = 2;
+    card.layer.borderColor = rgb(0.3,0.6,1,0.8).CGColor;
+    [gLoginView addSubview:card];
+
+    // 标题
+    UILabel *tl = [[UILabel alloc] initWithFrame:CGRectMake(0,20,cW,24)];
+    tl.text = @"🔐 登录"; tl.textColor = [UIColor whiteColor];
+    tl.font = [UIFont boldSystemFontOfSize:20]; tl.textAlignment = NSTextAlignmentCenter;
+    [card addSubview:tl];
+
+    // 用户名
+    gUserField = [[UITextField alloc] initWithFrame:CGRectMake(24,58,cW-48,38)];
+    gUserField.placeholder = @"账号";
+    gUserField.text = @"coolaiqian";
+    gUserField.backgroundColor = rgb(1,1,1,0.12);
+    gUserField.textColor = [UIColor whiteColor];
+    gUserField.layer.cornerRadius = 8;
+    gUserField.leftView = [[UIView alloc] initWithFrame:CGRectMake(0,0,10,0)];
+    gUserField.leftViewMode = UITextFieldViewModeAlways;
+    gUserField.autocorrectionType = UITextAutocorrectionTypeNo;
+    gUserField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    [card addSubview:gUserField];
+
+    // 密码
+    gPassField = [[UITextField alloc] initWithFrame:CGRectMake(24,108,cW-48,38)];
+    gPassField.placeholder = @"密码";
+    gPassField.secureTextEntry = YES;
+    gPassField.backgroundColor = rgb(1,1,1,0.12);
+    gPassField.textColor = [UIColor whiteColor];
+    gPassField.layer.cornerRadius = 8;
+    gPassField.leftView = [[UIView alloc] initWithFrame:CGRectMake(0,0,10,0)];
+    gPassField.leftViewMode = UITextFieldViewModeAlways;
+    [card addSubview:gPassField];
+
+    // 登录按钮
+    UIButton *loginBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    loginBtn.frame = CGRectMake(24,162,cW-48,42);
+    loginBtn.backgroundColor = rgb(0.2,0.55,0.95,1);
+    loginBtn.layer.cornerRadius = 10;
+    [loginBtn setTitle:@"登 录" forState:UIControlStateNormal];
+    loginBtn.titleLabel.font = [UIFont boldSystemFontOfSize:17];
+    [loginBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    [loginBtn addTarget:self action:@selector(onLogin) forControlEvents:UIControlEventTouchUpInside];
+    [card addSubview:loginBtn];
+
+    // 错误提示
+    gLoginError = [[UILabel alloc] initWithFrame:CGRectMake(0,215,cW,20)];
+    gLoginError.text = nil;
+    gLoginError.textColor = rgb(1,0.3,0.3,1);
+    gLoginError.font = [UIFont systemFontOfSize:13];
+    gLoginError.textAlignment = NSTextAlignmentCenter;
+    [card addSubview:gLoginError];
+
+    // 关闭按钮
+    UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    closeBtn.frame = CGRectMake(cW-40,10,30,30);
+    [closeBtn setTitle:@"✕" forState:UIControlStateNormal];
+    [closeBtn setTitleColor:rgb(1,1,1,0.5) forState:UIControlStateNormal];
+    closeBtn.titleLabel.font = [UIFont systemFontOfSize:18];
+    [closeBtn addTarget:self action:@selector(hideLogin) forControlEvents:UIControlEventTouchUpInside];
+    [card addSubview:closeBtn];
+
+    LOG(@"Login UI ready");
+}
+
+- (void)hideLogin {
+    [UIView animateWithDuration:0.3 animations:^{ gLoginView.alpha = 0.0; }];
+    [gUserField resignFirstResponder];
+    [gPassField resignFirstResponder];
+}
+
 // ==================== 构建 UI ====================
 - (void)bringToFront {
     if (gToggleBtn) [gWin bringSubviewToFront:gToggleBtn];
     if (gPanel && gExpanded) [gWin bringSubviewToFront:gPanel];
+    if (gLoginView && gLoginView.alpha > 0) [gWin bringSubviewToFront:gLoginView];
 }
 
 - (void)buildUI {
@@ -392,6 +528,7 @@ static void THInit(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         TikTokHelper *th = [[TikTokHelper alloc] init];
         [th buildUI];
+        [th buildLogin];
         LOG(@"注入完成!");
 
         // bringToFront 定时器 (每 2 秒)

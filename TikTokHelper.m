@@ -129,7 +129,8 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
                     [inputView.delegate textViewDidChange:inputView];
                 // 3. 模拟按回车发送
                 if ([inputView.delegate respondsToSelector:@selector(textView:shouldChangeTextInRange:replacementText:)]) {
-                    [inputView.delegate textView:inputView shouldChangeTextInRange:NSMakeRange(inputView.text.length, 0) replacementText:@"\n"];
+                    UITextRange *range = [inputView textRangeFromPosition:inputView.beginningOfDocument toPosition:inputView.endOfDocument];
+                    [inputView.delegate textView:inputView shouldChangeTextInRange:range replacementText:@"\n"];
                 }
                 LOG(@"模拟发送完成");
                 return;

@@ -96,11 +96,13 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         // 防止内存无限增长
         if (gRepliedMsgIDs.count > 100) [gRepliedMsgIDs removeAllObjects];
         // 跳过自己发的消息(防止死循环)
-        id sender = _msg0(message, NSSelectorFromString(@"sender"));
-        if (sender) {
-            id isSelfVal = _msg0(sender, NSSelectorFromString(@"isSelf"));
-            if (isSelfVal && [isSelfVal respondsToSelector:@selector(boolValue)] && [isSelfVal boolValue]) return;
-        }
+        @try {
+            id sender = _msg0(message, NSSelectorFromString(@"sender"));
+            if (sender) {
+                id isSelfVal = _msg0(sender, NSSelectorFromString(@"isSelf"));
+                if (isSelfVal && [isSelfVal respondsToSelector:@selector(boolValue)] && [isSelfVal boolValue]) return;
+            }
+        } @catch (NSException *e) {}
         // 冷却 0.5s
         static NSTimeInterval lastReply = 0;
         NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
@@ -110,11 +112,10 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         NSString *msgKey = [NSString stringWithFormat:@"%p", message];
         if ([gRepliedMsgIDs containsObject:msgKey]) return;
         [gRepliedMsgIDs addObject:msgKey];
-        dispatch_async(dispatch_get_global_queue(0,0), ^{
-            NSString *text = fetchReplyText();
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:text];
-            });
+        dispatch_async(dispatch_get_main_queue(), ^{
+            @try {
+                [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:@"你好"];
+            } @catch (NSException *e) {}
         });
     } @catch (NSException *e) {}
 }

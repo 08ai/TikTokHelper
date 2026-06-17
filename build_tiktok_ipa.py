@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 """
 build_tiktok_ipa.py — 构建注入 FridaGadget + TikTokHelper.dylib 的 TikTok IPA
 
@@ -357,7 +360,7 @@ if (dlopen && dlerror) {
 console.log("[TT_LOADER] Loader done.");
 '''
         loader_dst = os.path.join(app_dir, LOADER_NAME)
-        with open(loader_dst, "w") as f:
+        with open(loader_dst, "w", encoding="utf-8") as f:
             f.write(loader_js)
         print(f"  {LOADER_NAME} → {app_name}/ ({os.path.getsize(loader_dst)} bytes)")
 

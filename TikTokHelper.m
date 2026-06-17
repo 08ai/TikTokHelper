@@ -8,7 +8,6 @@
 //         -o TikTokHelper.dylib TikTokHelper.m
 
 #import <UIKit/UIKit.h>
-#import <CoreData/CoreData.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 
@@ -89,21 +88,17 @@ static void setStatus(NSString *s) {
 // ─── DM Hook: TIMOConversation.setLastMessage: ───
 static IMP gOrigSetLastMsg = NULL;
 static void hooked_setLastMsg(id self, SEL _cmd, id message) {
-    LOG(@"DM-HOOK-ENTER self=%@ msg=%p", [self class], message);
-
     // 先调用原始实现
     if (gOrigSetLastMsg) {
         ((void(*)(id,SEL,id))gOrigSetLastMsg)(self, _cmd, message);
     }
 
-    if (!gAutoDM || !message) { LOG(@"DM-HOOK gAutoDM=%d msg=%p skip", gAutoDM, message); return; }
+    if (!gAutoDM || !message) return;
 
     // 安全检查: 必须是 TIMOConversation
     if (![self isKindOfClass:NSClassFromString(@"TIMOConversation")]) return;
-    LOG(@"DM-HOOK confirmed");
 
     @try {
-        // 不访问 message 对象（CoreData 线程安全）——只用指针去重
         if (gRepliedMsgIDs.count > 100) [gRepliedMsgIDs removeAllObjects];
 
         // 冷却 0.5s
@@ -112,37 +107,23 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         if (now - lastReply < 0.5) return;
         lastReply = now;
 
-        // 用 msg 指针去重
+        // msg 指针去重
         NSString *msgKey = [NSString stringWithFormat:@"%p", message];
         if ([gRepliedMsgIDs containsObject:msgKey]) return;
         [gRepliedMsgIDs addObject:msgKey];
-        LOG(@"DM-HOOK dedup ok");
+        LOG(@"DM reply triggered");
 
-        // 捕获 CoreData 安全引用
-        NSManagedObjectID *objID = [self objectID];
-        NSManagedObjectContext *moc = [self managedObjectContext];
-        LOG(@"DM-HOOK objID=%@ moc=%@", objID, moc);
-
+        // self 是普通 NSObject (非 NSManagedObject)，直接主线程发送
         dispatch_async(dispatch_get_main_queue(), ^{
-            LOG(@"DM-HOOK dispatch enter");
             @try {
-                NSError *err = nil;
-                NSManagedObject *safeConv = [moc existingObjectWithID:objID error:&err];
-                LOG(@"DM-HOOK re-fetch safeConv=%@", safeConv);
-                if (!safeConv || err) {
-                    LOG(@"DM-HOOK re-fetch FAIL: %@", err);
-                    return;
-                }
-                LOG(@"DM-HOOK calling send...");
-                [[[TikTokHelper alloc] init] sendViaTIMOCtrl:safeConv text:@"你好"];
-                LOG(@"DM-HOOK send done");
+                [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:@"你好"];
+                LOG(@"DM reply sent");
             } @catch (NSException *e) {
-                LOG(@"DM-HOOK crash: %@", e);
+                LOG(@"sendViaTIMOCtrl crash: %@", e);
             }
         });
-        LOG(@"DM-HOOK dispatched");
     } @catch (NSException *e) {
-        LOG(@"DM-HOOK outer crash: %@", e);
+        LOG(@"hook crash: %@", e);
     }
 }
 
@@ -160,37 +141,29 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 // ─── 发送消息 ───
 - (void)sendViaTIMOCtrl:(id)timoConv text:(NSString *)text {
-    LOG(@"SEND enter conv=%@ text=%@", [timoConv class], text);
     @try {
         Class TC = NSClassFromString(@"AWEIMTextMessageContent");
         Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
         Class MS = NSClassFromString(@"AWEIMModuleService");
-        LOG(@"SEND classes TC=%@ SM=%@ MS=%@", TC, SM, MS);
-        if (!TC||!SM||!MS) { LOG(@"SEND class missing"); return; }
+        if (!TC||!SM||!MS) { LOG(@"send: class missing"); return; }
 
         id c = ((id(*)(id,SEL,NSString*))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:"), text);
-        LOG(@"SEND content1=%@", c);
         if (!c) c = ((id(*)(id,SEL,NSString*,id))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:referenceVideo:"), text, nil);
-        LOG(@"SEND content2=%@", c);
-        if (!c) { LOG(@"SEND content nil"); return; }
+        if (!c) { LOG(@"send: content nil"); return; }
 
         id m = ((id(*)(id,SEL,id))objc_msgSend)([SM alloc], NSSelectorFromString(@"initWithContent:"), c);
-        LOG(@"SEND model=%@", m);
-        if (!m) { LOG(@"SEND model nil"); return; }
+        if (!m) { LOG(@"send: model nil"); return; }
 
         id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
-        LOG(@"SEND ctrl=%@", sc);
-        if (!sc) { LOG(@"SEND ctrl nil"); return; }
+        if (!sc) { LOG(@"send: ctrl nil"); return; }
 
         SEL ss = NSSelectorFromString(@"sendMessage:conversation:");
-        LOG(@"SEND responds=%d", [sc respondsToSelector:ss]);
         if ([sc respondsToSelector:ss]) {
-            LOG(@"SEND calling sendMessage:conversation:");
             ((void(*)(id,SEL,id,id))objc_msgSend)(sc, ss, m, timoConv);
-            LOG(@"SEND done!");
+            LOG(@"send: OK");
         }
     } @catch (NSException *e) {
-        LOG(@"SEND crash: %@", e);
+        LOG(@"send crash: %@", e);
     }
 }
 

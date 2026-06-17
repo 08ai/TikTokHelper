@@ -8,7 +8,6 @@
 //         -o TikTokHelper.dylib TikTokHelper.m
 
 #import <UIKit/UIKit.h>
-#import <CoreData/CoreData.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 
@@ -26,7 +25,7 @@ static UILabel  *gStatusLabel;
 static BOOL      gExpanded = NO;
 static BOOL      gAutoFollow = NO;
 static BOOL      gAutoDM = NO;
-static NSMutableSet *gRepliedMsgIDs; // 已回复的消息 ID
+static NSMutableSet *gRepliedMsgIDs;
 
 // ==================== 颜色 ====================
 static UIColor *rgb(CGFloat r, CGFloat g, CGFloat b, CGFloat a) {
@@ -52,15 +51,6 @@ static NSString *httpGet(NSString *urlStr) {
     return [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
 }
 
-static NSString *fetchReplyText(void) {
-    NSString *resp = httpGet(@"http://107.148.2.130:5668/tiktoksms.php");
-    if (!resp) return @"你好";
-    NSData *data = [resp dataUsingEncoding:NSUTF8StringEncoding];
-    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-    NSString *sms = json[@"sms"];
-    return sms.length > 0 ? sms : @"你好";
-}
-
 // ==================== 获取 UID 列表 ====================
 static NSArray<NSString *> *fetchUIDs(void) {
     NSString *resp = httpGet(@"http://107.148.2.130/tiktokid.php");
@@ -82,22 +72,25 @@ static void setStatus(NSString *s) {
 // ==================== 界面 ====================
 @interface TikTokHelper : NSObject
 - (void)sendViaTIMOCtrl:(id)timoConv text:(NSString *)text;
-- (void)sendReplyToTIMOConv:(id)conv;
-- (void)sendReply:(NSString *)text toConversation:(id)conv;
 + (void)installMessageHook;
 @end
 
 // ─── DM Hook: TIMOConversation.setLastMessage: ───
 static IMP gOrigSetLastMsg = NULL;
 static void hooked_setLastMsg(id self, SEL _cmd, id message) {
+    // 先调用原始实现
     if (gOrigSetLastMsg) ((void(*)(id,SEL,id))gOrigSetLastMsg)(self, _cmd, message);
+
     if (!gAutoDM || !message) return;
-    // 安全检查: 必须是 TIMOConversation
+
+    // 安全检查 1: 必须是 TIMOConversation
     if (![self isKindOfClass:NSClassFromString(@"TIMOConversation")]) return;
+
     @try {
         // 防止内存无限增长
         if (gRepliedMsgIDs.count > 100) [gRepliedMsgIDs removeAllObjects];
-        // 跳过自己发的消息(防止死循环)
+
+        // 安全检查 2: 跳过自己发的消息（防止死循环）
         @try {
             id sender = _msg0(message, NSSelectorFromString(@"sender"));
             if (sender) {
@@ -105,15 +98,19 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
                 if (isSelfVal && [isSelfVal respondsToSelector:@selector(boolValue)] && [isSelfVal boolValue]) return;
             }
         } @catch (NSException *e) {}
-        // 冷却 0.5s
+
+        // 安全检查 3: 冷却 0.5s
         static NSTimeInterval lastReply = 0;
         NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
         if (now - lastReply < 0.5) return;
         lastReply = now;
-        // 用 msgPointer 去重
+
+        // 安全检查 4: 用 msgPointer 去重
         NSString *msgKey = [NSString stringWithFormat:@"%p", message];
         if ([gRepliedMsgIDs containsObject:msgKey]) return;
         [gRepliedMsgIDs addObject:msgKey];
+
+        // 主线程发送
         dispatch_async(dispatch_get_main_queue(), ^{
             @try {
                 [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:@"你好"];
@@ -127,30 +124,16 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 @implementation TikTokHelper
 
 + (void)installMessageHook {
-    // 使用定时器轮询代替 method swizzle（避免崩溃）
-    [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *t) {
-        if (!gAutoDM) return;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            @try {
-                [[[TikTokHelper alloc] init] pollInbox];
-            } @catch (NSException *e) {}
-        });
-    }];
-    LOG(@"DM Polling started");
+    Class TIMO = NSClassFromString(@"TIMOConversation");
+    if (!TIMO) { LOG(@"TIMOConversation not found"); return; }
+    Method m = class_getInstanceMethod(TIMO, NSSelectorFromString(@"setLastMessage:"));
+    if (!m) { LOG(@"setLastMessage: not found"); return; }
+    gOrigSetLastMsg = method_getImplementation(m);
+    method_setImplementation(m, (IMP)hooked_setLastMsg);
+    LOG(@"DM Swizzle installed");
 }
 
-- (void)pollInbox {
-    // 轮询所有 window 找 TIMOConversation 列表视图
-    // 通过子视图数量变化检测新消息
-    // 简化版: 直接不回复，仅占位
-}
-
-- (void)sendReplyToTIMOConv:(id)timoConv {
-    // 直接用 TIMOConversation 作为 sendMessage 的 conversation 参数
-    [self sendViaTIMOCtrl:timoConv text:@"你好"];
-}
-
-// ─── 发送 (使用真实 TIMOConversation) ───
+// ─── 发送消息 ───
 - (void)sendViaTIMOCtrl:(id)timoConv text:(NSString *)text {
     @try {
         Class TC = NSClassFromString(@"AWEIMTextMessageContent");
@@ -170,41 +153,6 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     } @catch (NSException *e) {
         LOG(@"send crash: %@", e);
     }
-}
-
-- (void)sendReplyToTIMOConvID:(NSString *)cid {
-    // 模拟人工操作: 找到聊天输入框 → setText → 触发发送
-    dispatch_async(dispatch_get_main_queue(), ^{
-        // 查找所有 window 中的 UITextView
-        NSArray *windows = [[UIApplication sharedApplication] windows];
-        for (UIWindow *w in windows) {
-            UITextView *inputView = [self findTextViewIn:w depth:0];
-            if (inputView) {
-                // 1. 设置文字
-                inputView.text = @"你好";
-                // 2. 通知 delegate 文字已改变
-                if ([inputView.delegate respondsToSelector:@selector(textViewDidChange:)])
-                    [inputView.delegate textViewDidChange:inputView];
-                // 3. 模拟按回车发送
-                if ([inputView.delegate respondsToSelector:@selector(textView:shouldChangeTextInRange:replacementText:)]) {
-                    [inputView.delegate textView:inputView shouldChangeTextInRange:NSMakeRange(2,0) replacementText:@"\n"];
-                }
-                LOG(@"模拟发送完成");
-                return;
-            }
-        }
-        LOG(@"未找到输入框");
-    });
-}
-
-- (UITextView *)findTextViewIn:(UIView *)v depth:(int)d {
-    if (d > 10 || !v) return nil;
-    if ([v isKindOfClass:[UITextView class]]) return (UITextView *)v;
-    for (UIView *sv in v.subviews) {
-        UITextView *r = [self findTextViewIn:sv depth:d+1];
-        if (r) return r;
-    }
-    return nil;
 }
 
 // ─── 创建按钮 ───
@@ -265,7 +213,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
                     setStatus([NSString stringWithFormat:@"关注 %ld/%lu: %@",(long)(i+1),(unsigned long)uids.count,uid]);
                 });
                 [self followUID:uid];
-                [NSThread sleepForTimeInterval:0.3]; // 300ms 间隔
+                [NSThread sleepForTimeInterval:0.3];
             }
             dispatch_async(dispatch_get_main_queue(), ^{
                 setStatus([NSString stringWithFormat:@"完成 %lu 人",(unsigned long)uids.count]);
@@ -284,76 +232,6 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 }
 
 // ==================== 自动私信 ====================
-- (void)sendReply:(NSString *)text toConversation:(id)conv {
-    Class TextContent = NSClassFromString(@"AWEIMTextMessageContent");
-    Class SendModel = NSClassFromString(@"AWEIMSendTextMessageModel");
-    Class ModuleSvc = NSClassFromString(@"AWEIMModuleService");
-    if (!TextContent || !SendModel || !ModuleSvc) return;
-
-    id content = [[TextContent alloc] init];
-    SEL initSel = NSSelectorFromString(@"initWithText:");
-    if ([content respondsToSelector:initSel])
-        content = ((id(*)(id,SEL,NSString*))objc_msgSend)(content, initSel, text);
-
-    id model = [[SendModel alloc] init];
-    SEL modelSel = NSSelectorFromString(@"initWithContent:");
-    if ([model respondsToSelector:modelSel])
-        model = ((id(*)(id,SEL,id))objc_msgSend)(model, modelSel, content);
-
-    id sendCtrl = _msg0(ModuleSvc, NSSelectorFromString(@"sendMessageController"));
-    if (!sendCtrl) return;
-
-    SEL sendSel = NSSelectorFromString(@"sendMessage:conversation:");
-    if ([sendCtrl respondsToSelector:sendSel])
-        ((void(*)(id,SEL,id,id))objc_msgSend)(sendCtrl, sendSel, model, conv);
-}
-
-- (void)checkInboxAndReply {
-    if (!gAutoDM) return;
-    @try {
-        // CoreData: fetch TIMOConversation
-        id app = [UIApplication sharedApplication];
-        id delegate = [app delegate];
-        id moc = _msg0(delegate, NSSelectorFromString(@"managedObjectContext"));
-        if (!moc) {
-            id container = _msg0(delegate, NSSelectorFromString(@"persistentContainer"));
-            if (container) moc = _msg0(container, NSSelectorFromString(@"viewContext"));
-        }
-        if (!moc) return;
-
-        NSFetchRequest *req = [[NSFetchRequest alloc] init];
-        NSEntityDescription *entity = [NSEntityDescription entityForName:@"TIMOConversation" inManagedObjectContext:moc];
-        if (!entity) return;
-        [req setEntity:entity];
-
-        NSArray *convs = [moc executeFetchRequest:req error:nil];
-        for (id conv in convs) {
-            id lastMsg = _msg0(conv, NSSelectorFromString(@"lastMessage"));
-            if (!lastMsg) continue;
-
-            id sender = _msg0(lastMsg, NSSelectorFromString(@"sender"));
-            if (!sender) continue;
-
-            // 跳过自己发的消息
-            NSNumber *isSelf = _msg0(sender, NSSelectorFromString(@"isSelf"));
-            if (isSelf && isSelf.boolValue) continue;
-
-            // 防重复回复
-            NSString *msgId = [lastMsg description];
-            if ([gRepliedMsgIDs containsObject:msgId]) continue;
-            [gRepliedMsgIDs addObject:msgId];
-
-            NSString *msgText = _msg0(lastMsg, NSSelectorFromString(@"text"));
-            LOG(@"新消息: %@", msgText);
-
-            [self sendReply:@"你好" toConversation:conv];
-            LOG(@"已自动回复: 你好");
-        }
-    } @catch (NSException *e) {
-        LOG(@"inbox error: %@", e);
-    }
-}
-
 - (void)onAutoDM {
     gAutoDM = !gAutoDM;
     if (gAutoDM) {
@@ -388,11 +266,10 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     gWin = keyWin();
     if (!gWin) { dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),^{[self buildUI];}); return; }
 
-    // 找到内容层：UITransitionView 的最后一个子视图
     UIView *contentView = gWin;
     NSArray *subs = gWin.subviews;
     if (subs.count > 0) {
-        UIView *tView = subs[0]; // UITransitionView
+        UIView *tView = subs[0];
         if (tView.subviews.count > 0) {
             contentView = tView.subviews.lastObject;
             LOG(@"Using contentView: %@", NSStringFromClass([contentView class]));
@@ -403,7 +280,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
     CGFloat SW = [UIScreen mainScreen].bounds.size.width;
 
-    // ── 红色展开按钮 (在 contentView 上) ──
+    // ── 红色展开按钮 ──
     gToggleBtn = [self makeBtn:@"展开" frame:CGRectMake(SW-95,120,85,48) bg:rgb(0.92,0.1,0.1,0.92) fs:18];
     gToggleBtn.layer.cornerRadius = 16;
     [gToggleBtn addTarget:self action:@selector(onToggle) forControlEvents:UIControlEventTouchUpInside];
@@ -419,20 +296,17 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     gPanel.alpha = 0;
     [contentView addSubview:gPanel];
 
-    // 标题
     UILabel *tl = [[UILabel alloc] initWithFrame:CGRectMake(10,8,pW-20,18)];
     tl.text = @"操作面板"; tl.textColor = rgb(1,1,1,0.6);
     tl.font = [UIFont systemFontOfSize:13]; tl.textAlignment = NSTextAlignmentCenter;
     [gPanel addSubview:tl];
 
-    // 状态栏
     gStatusLabel = [[UILabel alloc] initWithFrame:CGRectMake(10,pH-38,pW-20,30)];
     gStatusLabel.text = @"就绪"; gStatusLabel.textColor = rgb(1,1,1,0.7);
     gStatusLabel.font = [UIFont systemFontOfSize:10]; gStatusLabel.textAlignment = NSTextAlignmentCenter;
     gStatusLabel.numberOfLines = 2;
     [gPanel addSubview:gStatusLabel];
 
-    // 3 个按钮
     CGFloat bX=12, bW=pW-24, bH=50, g=6, sY=30;
 
     gFollowBtn = [self makeBtn:@"自动关注" frame:CGRectMake(bX,sY,bW,bH) bg:rgb(0.18,0.50,0.92,0.9) fs:16];
@@ -466,7 +340,7 @@ static void THInit(void) {
             [th bringToFront];
         }];
 
-        // 自动私信 Hook (事件驱动，不需要轮询)
+        // 自动私信——method swizzle（事件驱动）
         [TikTokHelper installMessageHook];
     });
 }

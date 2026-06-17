@@ -12,7 +12,12 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-#define LOG(fmt, ...) NSLog(@"[TH] " fmt, ##__VA_ARGS__)
+#define LOG(fmt, ...) do { \
+    NSString *_s = [NSString stringWithFormat:@"[TH] " fmt, ##__VA_ARGS__]; \
+    NSLog(@"[TH] " fmt, ##__VA_ARGS__); \
+    FILE *_f = fopen("/tmp/th.log", "a"); \
+    if (_f) { fprintf(_f, "%s\n", [_s UTF8String]); fclose(_f); } \
+} while(0)
 
 // ==================== 安全调用 ====================
 static id _msg0(id t, SEL s) { if(!t||![t respondsToSelector:s])return nil; return ((id(*)(id,SEL))objc_msgSend)(t,s); }

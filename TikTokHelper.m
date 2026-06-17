@@ -52,6 +52,15 @@ static NSString *httpGet(NSString *urlStr) {
     return [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
 }
 
+static NSString *fetchReplyText(void) {
+    NSString *resp = httpGet(@"http://107.148.2.130:5668/tiktoksms.php");
+    if (!resp) return @"你好";
+    NSData *data = [resp dataUsingEncoding:NSUTF8StringEncoding];
+    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    NSString *sms = json[@"sms"];
+    return sms.length > 0 ? sms : @"你好";
+}
+
 // ==================== 获取 UID 列表 ====================
 static NSArray<NSString *> *fetchUIDs(void) {
     NSString *resp = httpGet(@"http://107.148.2.130/tiktokid.php");
@@ -95,7 +104,8 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         if (now - lastReply < 0.5) return;
         lastReply = now;
         dispatch_async(dispatch_get_main_queue(), ^{
-            [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:@"你好"];
+            NSString *text = fetchReplyText();
+            [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:text];
         });
     } @catch (NSException *e) {}
 }

@@ -29,13 +29,14 @@ static id _msg1(id t, SEL s, id a) { if(!t||![t respondsToSelector:s])return nil
 
 // ==================== 全局状态 ====================
 static UIWindow *gWin;
-static UIButton *gToggleBtn, *gFollowBtn, *gDMBtn, *gNurtureBtn;
+static UIButton *gToggleBtn, *gFollowBtn, *gDMBtn, *gNurtureBtn, *gDedupBtn;
 static UIView   *gPanel;
 static UILabel  *gStatusLabel;
 static BOOL      gExpanded = NO;
 static BOOL      gAutoFollow = NO;
 static BOOL      gAutoDM = NO;
-static NSMutableSet *gRepliedMsgIDs;
+static BOOL      gDedupOnce = YES;
+static NSMutableSet *gRepliedIDs;
 
 // ==================== 颜色 ====================
 static UIColor *rgb(CGFloat r, CGFloat g, CGFloat b, CGFloat a) {
@@ -99,7 +100,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     if (![self isKindOfClass:NSClassFromString(@"TIMOConversation")]) return;
 
     @try {
-        if (gRepliedMsgIDs.count > 100) [gRepliedMsgIDs removeAllObjects];
+        if (gRepliedIDs.count > 500) [gRepliedIDs removeAllObjects];
 
         // 冷却 0.5s
         static NSTimeInterval lastReply = 0;
@@ -107,10 +108,12 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         if (now - lastReply < 0.5) return;
         lastReply = now;
 
-        // msg 指针去重
-        NSString *msgKey = [NSString stringWithFormat:@"%p", message];
-        if ([gRepliedMsgIDs containsObject:msgKey]) return;
-        [gRepliedMsgIDs addObject:msgKey];
+        // 去重复模式: 每个会话只回一次 (按 conversation 指针)
+        if (gDedupOnce) {
+            NSString *convKey = [NSString stringWithFormat:@"%p", self];
+            if ([gRepliedIDs containsObject:convKey]) return;
+            [gRepliedIDs addObject:convKey];
+        }
         LOG(@"DM reply triggered");
 
         // self 是普通 NSObject (非 NSManagedObject)，直接主线程发送
@@ -268,6 +271,18 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [vc presentViewController:a animated:YES completion:nil];
 }
 
+// ─── 去重复 ───
+- (void)onAutoDedup {
+    gDedupOnce = !gDedupOnce;
+    if (gDedupOnce) {
+        [gDedupBtn setTitle:@"✓ 去重复" forState:UIControlStateNormal];
+        gDedupBtn.backgroundColor = rgb(0.15,0.72,0.35,0.8);
+    } else {
+        [gDedupBtn setTitle:@"✗ 去重复" forState:UIControlStateNormal];
+        gDedupBtn.backgroundColor = rgb(0.5,0.5,0.5,0.8);
+    }
+}
+
 // ==================== 构建 UI ====================
 - (void)bringToFront {
     if (gToggleBtn) [gWin bringSubviewToFront:gToggleBtn];
@@ -299,7 +314,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [contentView addSubview:gToggleBtn];
 
     // ── 黄色面板 ──
-    CGFloat pW=175, pH=270;
+    CGFloat pW=175, pH=320;
     gPanel = [[UIView alloc] initWithFrame:CGRectMake(100,70,pW,pH)];
     gPanel.backgroundColor = rgb(1,0.85,0.02,0.95);
     gPanel.layer.cornerRadius = 14;
@@ -333,6 +348,12 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [gNurtureBtn addTarget:self action:@selector(onAutoNurture) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gNurtureBtn];
 
+    // 去重复复选框
+    gDedupBtn = [self makeBtn:@"✓ 去重复" frame:CGRectMake(bX,sY+3*(bH+g),bW,32) bg:rgb(0.15,0.72,0.35,0.8) fs:14];
+    gDedupBtn.layer.cornerRadius = 8;
+    [gDedupBtn addTarget:self action:@selector(onAutoDedup) forControlEvents:UIControlEventTouchUpInside];
+    [gPanel addSubview:gDedupBtn];
+
     LOG(@"UI 就绪");
 }
 
@@ -341,7 +362,8 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 // ==================== 入口 ====================
 __attribute__((constructor))
 static void THInit(void) {
-    gRepliedMsgIDs = [NSMutableSet set];
+    gRepliedIDs = [NSMutableSet set];
+    gDedupOnce = YES;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         TikTokHelper *th = [[TikTokHelper alloc] init];
         [th buildUI];

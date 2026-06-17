@@ -89,75 +89,58 @@ static void setStatus(NSString *s) {
 // ─── DM Hook: TIMOConversation.setLastMessage: ───
 static IMP gOrigSetLastMsg = NULL;
 static void hooked_setLastMsg(id self, SEL _cmd, id message) {
-    LOG(@"DM-HOOK-ENTER self=%@ msg=%@", [self class], [message class]);
+    LOG(@"DM-HOOK-ENTER self=%@ msg=%p", [self class], message);
 
     // 先调用原始实现
     if (gOrigSetLastMsg) {
-        LOG(@"DM-HOOK call orig");
         ((void(*)(id,SEL,id))gOrigSetLastMsg)(self, _cmd, message);
-        LOG(@"DM-HOOK orig done");
     }
 
-    if (!gAutoDM) { LOG(@"DM-HOOK gAutoDM=OFF, skip"); return; }
-    if (!message) { LOG(@"DM-HOOK message=nil, skip"); return; }
+    if (!gAutoDM || !message) { LOG(@"DM-HOOK gAutoDM=%d msg=%p skip", gAutoDM, message); return; }
 
-    LOG(@"DM-HOOK class check: %@", [self class]);
-    if (![self isKindOfClass:NSClassFromString(@"TIMOConversation")]) {
-        LOG(@"DM-HOOK NOT TIMOConversation, skip");
-        return;
-    }
-    LOG(@"DM-HOOK confirmed TIMOConversation");
+    // 安全检查: 必须是 TIMOConversation
+    if (![self isKindOfClass:NSClassFromString(@"TIMOConversation")]) return;
+    LOG(@"DM-HOOK confirmed");
 
     @try {
+        // 不访问 message 对象（CoreData 线程安全）——只用指针去重
         if (gRepliedMsgIDs.count > 100) [gRepliedMsgIDs removeAllObjects];
-        LOG(@"DM-HOOK dedup count=%lu", (unsigned long)gRepliedMsgIDs.count);
 
-        @try {
-            id sender = _msg0(message, NSSelectorFromString(@"sender"));
-            LOG(@"DM-HOOK sender=%@", sender);
-            if (sender) {
-                id isSelfVal = _msg0(sender, NSSelectorFromString(@"isSelf"));
-                LOG(@"DM-HOOK isSelf=%@", isSelfVal);
-                if (isSelfVal && [isSelfVal respondsToSelector:@selector(boolValue)] && [isSelfVal boolValue]) {
-                    LOG(@"DM-HOOK self-msg, skip");
-                    return;
-                }
-            }
-        } @catch (NSException *e) { LOG(@"DM-HOOK sender check err: %@", e); }
-
+        // 冷却 0.5s
         static NSTimeInterval lastReply = 0;
         NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-        if (now - lastReply < 0.5) { LOG(@"DM-HOOK cooldown, skip"); return; }
+        if (now - lastReply < 0.5) return;
         lastReply = now;
 
+        // 用 msg 指针去重
         NSString *msgKey = [NSString stringWithFormat:@"%p", message];
-        if ([gRepliedMsgIDs containsObject:msgKey]) { LOG(@"DM-HOOK dup, skip"); return; }
+        if ([gRepliedMsgIDs containsObject:msgKey]) return;
         [gRepliedMsgIDs addObject:msgKey];
-        LOG(@"DM-HOOK all checks passed, getting objectID...");
+        LOG(@"DM-HOOK dedup ok");
 
+        // 捕获 CoreData 安全引用
         NSManagedObjectID *objID = [self objectID];
-        LOG(@"DM-HOOK objID=%@", objID);
         NSManagedObjectContext *moc = [self managedObjectContext];
-        LOG(@"DM-HOOK moc=%@", moc);
+        LOG(@"DM-HOOK objID=%@ moc=%@", objID, moc);
 
         dispatch_async(dispatch_get_main_queue(), ^{
-            LOG(@"DM-HOOK main-queue enter");
+            LOG(@"DM-HOOK dispatch enter");
             @try {
                 NSError *err = nil;
                 NSManagedObject *safeConv = [moc existingObjectWithID:objID error:&err];
-                LOG(@"DM-HOOK re-fetch safeConv=%@ err=%@", safeConv, err);
+                LOG(@"DM-HOOK re-fetch safeConv=%@", safeConv);
                 if (!safeConv || err) {
-                    LOG(@"DM-HOOK re-fetch failed, abort");
+                    LOG(@"DM-HOOK re-fetch FAIL: %@", err);
                     return;
                 }
-                LOG(@"DM-HOOK calling sendViaTIMOCtrl...");
+                LOG(@"DM-HOOK calling send...");
                 [[[TikTokHelper alloc] init] sendViaTIMOCtrl:safeConv text:@"你好"];
-                LOG(@"DM-HOOK sendViaTIMOCtrl done");
+                LOG(@"DM-HOOK send done");
             } @catch (NSException *e) {
-                LOG(@"DM-HOOK main-queue crash: %@", e);
+                LOG(@"DM-HOOK crash: %@", e);
             }
         });
-        LOG(@"DM-HOOK dispatched, exit hook");
+        LOG(@"DM-HOOK dispatched");
     } @catch (NSException *e) {
         LOG(@"DM-HOOK outer crash: %@", e);
     }

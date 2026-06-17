@@ -91,7 +91,9 @@ static void setStatus(NSString *s) {
 static IMP gOrigSetLastMsg = NULL;
 static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     if (gOrigSetLastMsg) ((void(*)(id,SEL,id))gOrigSetLastMsg)(self, _cmd, message);
-    if (!gAutoDM || !message) { return; }
+    if (!gAutoDM || !message) return;
+    // 安全检查: 必须是 TIMOConversation
+    if (![self isKindOfClass:NSClassFromString(@"TIMOConversation")]) return;
     @try {
         // 防止内存无限增长
         if (gRepliedMsgIDs.count > 100) [gRepliedMsgIDs removeAllObjects];

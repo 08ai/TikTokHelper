@@ -109,9 +109,25 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 }
 
 - (void)sendReplyToTIMOConv:(id)timoConv {
-    NSString *cid = _msg0(timoConv, NSSelectorFromString(@"identifier"));
-    if (!cid) return;
-    [self sendReplyToTIMOConvID:cid];
+    // 直接用 TIMOConversation 作为 sendMessage 的 conversation 参数
+    [self sendViaTIMOCtrl:timoConv text:@"你好"];
+}
+
+// ─── 发送 (使用真实 TIMOConversation) ───
+- (void)sendViaTIMOCtrl:(id)timoConv text:(NSString *)text {
+    Class TC = NSClassFromString(@"AWEIMTextMessageContent");
+    Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
+    Class MS = NSClassFromString(@"AWEIMModuleService");
+    if (!TC||!SM||!MS) return;
+    id c = ((id(*)(id,SEL,NSString*))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:"), text);
+    if (!c) return;
+    id m = ((id(*)(id,SEL,id))objc_msgSend)([SM alloc], NSSelectorFromString(@"initWithContent:"), c);
+    if (!m) return;
+    id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
+    SEL ss = NSSelectorFromString(@"sendMessage:conversation:");
+    if ([sc respondsToSelector:ss])
+        ((void(*)(id,SEL,id,id))objc_msgSend)(sc, ss, m, timoConv);
+    LOG(@"已发送: %@", text);
 }
 
 - (void)sendReplyToTIMOConvID:(NSString *)cid {

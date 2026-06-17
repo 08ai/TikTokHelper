@@ -115,7 +115,9 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         dispatch_async(dispatch_get_main_queue(), ^{
             @try {
                 [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:@"你好"];
-            } @catch (NSException *e) {}
+            } @catch (NSException *e) {
+                LOG(@"reply crash: %@", e);
+            }
         });
     } @catch (NSException *e) {}
 }
@@ -139,24 +141,23 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 // ─── 发送 (使用真实 TIMOConversation) ───
 - (void)sendViaTIMOCtrl:(id)timoConv text:(NSString *)text {
-    Class TC = NSClassFromString(@"AWEIMTextMessageContent");
-    Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
-    Class MS = NSClassFromString(@"AWEIMModuleService");
-    if (!TC||!SM||!MS) { LOG(@"sendFail: class missing"); return; }
-    id c = ((id(*)(id,SEL,NSString*))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:"), text);
-    if (!c) {
-        // fallback: initWithText:referenceVideo:
-        c = ((id(*)(id,SEL,NSString*,id))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:referenceVideo:"), text, nil);
-    }
-    if (!c) { LOG(@"sendFail: content nil"); return; }
-    id m = ((id(*)(id,SEL,id))objc_msgSend)([SM alloc], NSSelectorFromString(@"initWithContent:"), c);
-    if (!m) { LOG(@"sendFail: model nil"); return; }
-    id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
-    if (!sc) { LOG(@"sendFail: sendCtrl nil"); return; }
-    SEL ss = NSSelectorFromString(@"sendMessage:conversation:");
-    if ([sc respondsToSelector:ss]) {
-        ((void(*)(id,SEL,id,id))objc_msgSend)(sc, ss, m, timoConv);
-        LOG(@"已回复");
+    @try {
+        Class TC = NSClassFromString(@"AWEIMTextMessageContent");
+        Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
+        Class MS = NSClassFromString(@"AWEIMModuleService");
+        if (!TC||!SM||!MS) return;
+        id c = ((id(*)(id,SEL,NSString*))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:"), text);
+        if (!c) c = ((id(*)(id,SEL,NSString*,id))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:referenceVideo:"), text, nil);
+        if (!c) return;
+        id m = ((id(*)(id,SEL,id))objc_msgSend)([SM alloc], NSSelectorFromString(@"initWithContent:"), c);
+        if (!m) return;
+        id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
+        if (!sc) return;
+        SEL ss = NSSelectorFromString(@"sendMessage:conversation:");
+        if ([sc respondsToSelector:ss])
+            ((void(*)(id,SEL,id,id))objc_msgSend)(sc, ss, m, timoConv);
+    } @catch (NSException *e) {
+        LOG(@"send crash: %@", e);
     }
 }
 

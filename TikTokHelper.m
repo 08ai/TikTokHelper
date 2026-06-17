@@ -334,14 +334,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
                             [user stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]],
                             [pass stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
         NSString *resp = httpGet(urlStr);
-        BOOL ok = NO;
-        if (resp) {
-            NSData *data = [resp dataUsingEncoding:NSUTF8StringEncoding];
-            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-            if (json && [json[@"status"] isEqual:@"ok"]) ok = YES;
-            // 也兼容返回 {"userid":"...","sms":"..."} 格式，只要不是错误就算成功
-            if (!ok && json && json[@"userid"]) ok = YES;
-        }
+        BOOL ok = [resp isEqualToString:@"OK"];
         dispatch_async(dispatch_get_main_queue(), ^{
             if (ok) {
                 gIsLoggedIn = YES;
@@ -385,7 +378,6 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     // 用户名
     gUserField = [[UITextField alloc] initWithFrame:CGRectMake(24,58,cW-48,38)];
     gUserField.placeholder = @"账号";
-    gUserField.text = @"coolaiqian";
     gUserField.backgroundColor = rgb(1,1,1,0.12);
     gUserField.textColor = [UIColor whiteColor];
     gUserField.layer.cornerRadius = 8;

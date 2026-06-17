@@ -8,6 +8,7 @@
 //         -o TikTokHelper.dylib TikTokHelper.m
 
 #import <UIKit/UIKit.h>
+#import <CoreData/CoreData.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 
@@ -110,10 +111,19 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         if ([gRepliedMsgIDs containsObject:msgKey]) return;
         [gRepliedMsgIDs addObject:msgKey];
 
-        // 主线程发送
+        // CoreData 线程安全: 捕获 objectID，在主线程重新获取
+        NSManagedObjectID *objID = [self objectID];
+        NSManagedObjectContext *moc = [self managedObjectContext];
+
         dispatch_async(dispatch_get_main_queue(), ^{
             @try {
-                [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:@"你好"];
+                NSError *err = nil;
+                NSManagedObject *safeConv = [moc existingObjectWithID:objID error:&err];
+                if (!safeConv || err) {
+                    LOG(@"re-fetch failed: %@", err);
+                    return;
+                }
+                [[[TikTokHelper alloc] init] sendViaTIMOCtrl:safeConv text:@"你好"];
             } @catch (NSException *e) {
                 LOG(@"reply crash: %@", e);
             }

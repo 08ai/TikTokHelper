@@ -82,15 +82,21 @@ static void setStatus(NSString *s) {
 static IMP gOrigSetLastMsg = NULL;
 static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     if (gOrigSetLastMsg) ((void(*)(id,SEL,id))gOrigSetLastMsg)(self, _cmd, message);
-    if (!gAutoDM || !message) return;
+    if (!gAutoDM || !message) { return; }
     @try {
-        if ([gRepliedMsgIDs containsObject:self]) return;
-        [gRepliedMsgIDs addObject:self];
+        // 防止内存无限增长: 超过 100 条清理旧记录
+        if (gRepliedMsgIDs.count > 100) [gRepliedMsgIDs removeAllObjects];
+        NSString *msgKey = [NSString stringWithFormat:@"%p", message];
+        if ([gRepliedMsgIDs containsObject:msgKey]) return;
+        [gRepliedMsgIDs addObject:msgKey];
+        // 冷却 0.5s
         static NSTimeInterval lastReply = 0;
         NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-        if (now - lastReply < 2.0) return;
+        if (now - lastReply < 0.5) return;
         lastReply = now;
-        [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:@"你好"];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:@"你好"];
+        });
     } @catch (NSException *e) {}
 }
 
@@ -116,16 +122,22 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     Class TC = NSClassFromString(@"AWEIMTextMessageContent");
     Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
     Class MS = NSClassFromString(@"AWEIMModuleService");
-    if (!TC||!SM||!MS) return;
+    if (!TC||!SM||!MS) { LOG(@"sendFail: class missing"); return; }
     id c = ((id(*)(id,SEL,NSString*))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:"), text);
-    if (!c) return;
+    if (!c) {
+        // fallback: initWithText:referenceVideo:
+        c = ((id(*)(id,SEL,NSString*,id))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:referenceVideo:"), text, nil);
+    }
+    if (!c) { LOG(@"sendFail: content nil"); return; }
     id m = ((id(*)(id,SEL,id))objc_msgSend)([SM alloc], NSSelectorFromString(@"initWithContent:"), c);
-    if (!m) return;
+    if (!m) { LOG(@"sendFail: model nil"); return; }
     id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
+    if (!sc) { LOG(@"sendFail: sendCtrl nil"); return; }
     SEL ss = NSSelectorFromString(@"sendMessage:conversation:");
-    if ([sc respondsToSelector:ss])
+    if ([sc respondsToSelector:ss]) {
         ((void(*)(id,SEL,id,id))objc_msgSend)(sc, ss, m, timoConv);
-    LOG(@"已发送: %@", text);
+        LOG(@"已回复");
+    }
 }
 
 - (void)sendReplyToTIMOConvID:(NSString *)cid {

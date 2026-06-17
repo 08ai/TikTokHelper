@@ -12,12 +12,17 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-#define LOG(fmt, ...) do { \
-    NSString *_s = [NSString stringWithFormat:@"[TH] " fmt, ##__VA_ARGS__]; \
-    NSLog(@"[TH] " fmt, ##__VA_ARGS__); \
-    FILE *_f = fopen("/tmp/th.log", "a"); \
-    if (_f) { fprintf(_f, "%s\n", [_s UTF8String]); fclose(_f); } \
-} while(0)
+// ==================== 文件日志 ====================
+static void thLog(NSString *msg) {
+    NSLog(@"%@", msg);
+    NSString *logPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"th.log"];
+    FILE *f = fopen([logPath UTF8String], "a");
+    if (f) {
+        fprintf(f, "%s\n", [msg UTF8String]);
+        fclose(f);
+    }
+}
+#define LOG(fmt, ...) thLog([NSString stringWithFormat:@"[TH] " fmt, ##__VA_ARGS__])
 
 // ==================== 安全调用 ====================
 static id _msg0(id t, SEL s) { if(!t||![t respondsToSelector:s])return nil; return ((id(*)(id,SEL))objc_msgSend)(t,s); }

@@ -307,8 +307,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 }
 
 // ─── 去重复 ───
-- (void)onAutoDedup {
-    gDedupOnce = !gDedupOnce;
+- (void)updateDedupBtn {
     if (gDedupOnce) {
         [gDedupBtn setTitle:@"✓ 去重复" forState:UIControlStateNormal];
         gDedupBtn.backgroundColor = rgb(0.15,0.72,0.35,0.8);
@@ -316,6 +315,27 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         [gDedupBtn setTitle:@"✗ 去重复" forState:UIControlStateNormal];
         gDedupBtn.backgroundColor = rgb(0.5,0.5,0.5,0.8);
     }
+}
+
+- (void)onAutoDedup {
+    gDedupOnce = !gDedupOnce;
+    [self updateDedupBtn];
+}
+
+- (void)fetchDedupSetting {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
+        NSString *resp = httpGet(@"http://107.148.2.130:5668/tiktokchongfu.php");
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if ([resp isEqualToString:@"1"]) {
+                gDedupOnce = YES;
+                LOG(@"Dedup: ON (remote=1)");
+            } else if ([resp isEqualToString:@"2"]) {
+                gDedupOnce = NO;
+                LOG(@"Dedup: OFF (remote=2)");
+            }
+            [self updateDedupBtn];
+        });
+    });
 }
 
 // ==================== 登录 ====================
@@ -521,6 +541,7 @@ static void THInit(void) {
         TikTokHelper *th = [[TikTokHelper alloc] init];
         [th buildUI];
         [th buildLogin];
+        [th fetchDedupSetting];
         LOG(@"注入完成!");
 
         // bringToFront 定时器 (每 2 秒)

@@ -72,8 +72,8 @@ static void setStatus(NSString *s) {
 
 // ==================== 界面 ====================
 @interface TikTokHelper : NSObject
+- (void)sendViaTIMOCtrl:(id)timoConv text:(NSString *)text;
 - (void)sendReplyToTIMOConv:(id)conv;
-- (void)sendReplyToTIMOConvID:(NSString *)cid;
 - (void)sendReply:(NSString *)text toConversation:(id)conv;
 + (void)installMessageHook;
 @end

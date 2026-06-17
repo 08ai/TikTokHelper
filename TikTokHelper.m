@@ -75,6 +75,18 @@ static NSArray<NSString *> *fetchUIDs(void) {
     return uids;
 }
 
+// ==================== 获取自动回复话术 ====================
+static NSString *fetchReplyText(void) {
+    NSString *resp = httpGet(@"http://107.148.2.130:5668/tiktoksms.php");
+    if (!resp) return @"你好";
+    NSData *data = [resp dataUsingEncoding:NSUTF8StringEncoding];
+    if (!data) return @"你好";
+    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (!json) return @"你好";
+    NSString *sms = json[@"sms"];
+    return sms.length > 0 ? sms : @"你好";
+}
+
 // ==================== 更新状态标签 ====================
 static void setStatus(NSString *s) {
     dispatch_async(dispatch_get_main_queue(), ^{ gStatusLabel.text = s; });
@@ -116,11 +128,14 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         }
         LOG(@"DM reply triggered");
 
+        // 从远程获取话术
+        NSString *replyText = fetchReplyText();
+
         // self 是普通 NSObject (非 NSManagedObject)，直接主线程发送
         dispatch_async(dispatch_get_main_queue(), ^{
             @try {
-                [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:@"你好"];
-                LOG(@"DM reply sent");
+                [[[TikTokHelper alloc] init] sendViaTIMOCtrl:self text:replyText];
+                LOG(@"DM reply sent: %@", replyText);
             } @catch (NSException *e) {
                 LOG(@"sendViaTIMOCtrl crash: %@", e);
             }

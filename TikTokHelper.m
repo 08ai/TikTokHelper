@@ -79,56 +79,78 @@ static void setStatus(NSString *s) {
 // ─── DM Hook: TIMOConversation.setLastMessage: ───
 static IMP gOrigSetLastMsg = NULL;
 static void hooked_setLastMsg(id self, SEL _cmd, id message) {
+    LOG(@"DM-HOOK-ENTER self=%@ msg=%@", [self class], [message class]);
+
     // 先调用原始实现
-    if (gOrigSetLastMsg) ((void(*)(id,SEL,id))gOrigSetLastMsg)(self, _cmd, message);
+    if (gOrigSetLastMsg) {
+        LOG(@"DM-HOOK call orig");
+        ((void(*)(id,SEL,id))gOrigSetLastMsg)(self, _cmd, message);
+        LOG(@"DM-HOOK orig done");
+    }
 
-    if (!gAutoDM || !message) return;
+    if (!gAutoDM) { LOG(@"DM-HOOK gAutoDM=OFF, skip"); return; }
+    if (!message) { LOG(@"DM-HOOK message=nil, skip"); return; }
 
-    // 安全检查 1: 必须是 TIMOConversation
-    if (![self isKindOfClass:NSClassFromString(@"TIMOConversation")]) return;
+    LOG(@"DM-HOOK class check: %@", [self class]);
+    if (![self isKindOfClass:NSClassFromString(@"TIMOConversation")]) {
+        LOG(@"DM-HOOK NOT TIMOConversation, skip");
+        return;
+    }
+    LOG(@"DM-HOOK confirmed TIMOConversation");
 
     @try {
-        // 防止内存无限增长
         if (gRepliedMsgIDs.count > 100) [gRepliedMsgIDs removeAllObjects];
+        LOG(@"DM-HOOK dedup count=%lu", (unsigned long)gRepliedMsgIDs.count);
 
-        // 安全检查 2: 跳过自己发的消息（防止死循环）
         @try {
             id sender = _msg0(message, NSSelectorFromString(@"sender"));
+            LOG(@"DM-HOOK sender=%@", sender);
             if (sender) {
                 id isSelfVal = _msg0(sender, NSSelectorFromString(@"isSelf"));
-                if (isSelfVal && [isSelfVal respondsToSelector:@selector(boolValue)] && [isSelfVal boolValue]) return;
+                LOG(@"DM-HOOK isSelf=%@", isSelfVal);
+                if (isSelfVal && [isSelfVal respondsToSelector:@selector(boolValue)] && [isSelfVal boolValue]) {
+                    LOG(@"DM-HOOK self-msg, skip");
+                    return;
+                }
             }
-        } @catch (NSException *e) {}
+        } @catch (NSException *e) { LOG(@"DM-HOOK sender check err: %@", e); }
 
-        // 安全检查 3: 冷却 0.5s
         static NSTimeInterval lastReply = 0;
         NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-        if (now - lastReply < 0.5) return;
+        if (now - lastReply < 0.5) { LOG(@"DM-HOOK cooldown, skip"); return; }
         lastReply = now;
 
-        // 安全检查 4: 用 msgPointer 去重
         NSString *msgKey = [NSString stringWithFormat:@"%p", message];
-        if ([gRepliedMsgIDs containsObject:msgKey]) return;
+        if ([gRepliedMsgIDs containsObject:msgKey]) { LOG(@"DM-HOOK dup, skip"); return; }
         [gRepliedMsgIDs addObject:msgKey];
+        LOG(@"DM-HOOK all checks passed, getting objectID...");
 
-        // CoreData 线程安全: 捕获 objectID，在主线程重新获取
         NSManagedObjectID *objID = [self objectID];
+        LOG(@"DM-HOOK objID=%@", objID);
         NSManagedObjectContext *moc = [self managedObjectContext];
+        LOG(@"DM-HOOK moc=%@", moc);
 
         dispatch_async(dispatch_get_main_queue(), ^{
+            LOG(@"DM-HOOK main-queue enter");
             @try {
                 NSError *err = nil;
                 NSManagedObject *safeConv = [moc existingObjectWithID:objID error:&err];
+                LOG(@"DM-HOOK re-fetch safeConv=%@ err=%@", safeConv, err);
                 if (!safeConv || err) {
-                    LOG(@"re-fetch failed: %@", err);
+                    LOG(@"DM-HOOK re-fetch failed, abort");
                     return;
                 }
+                LOG(@"DM-HOOK calling sendViaTIMOCtrl...");
                 [[[TikTokHelper alloc] init] sendViaTIMOCtrl:safeConv text:@"你好"];
+                LOG(@"DM-HOOK sendViaTIMOCtrl done");
             } @catch (NSException *e) {
-                LOG(@"reply crash: %@", e);
+                LOG(@"DM-HOOK main-queue crash: %@", e);
             }
         });
-    } @catch (NSException *e) {}
+        LOG(@"DM-HOOK dispatched, exit hook");
+    } @catch (NSException *e) {
+        LOG(@"DM-HOOK outer crash: %@", e);
+    }
 }
 
 @implementation TikTokHelper
@@ -145,23 +167,37 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 // ─── 发送消息 ───
 - (void)sendViaTIMOCtrl:(id)timoConv text:(NSString *)text {
+    LOG(@"SEND enter conv=%@ text=%@", [timoConv class], text);
     @try {
         Class TC = NSClassFromString(@"AWEIMTextMessageContent");
         Class SM = NSClassFromString(@"AWEIMSendTextMessageModel");
         Class MS = NSClassFromString(@"AWEIMModuleService");
-        if (!TC||!SM||!MS) return;
+        LOG(@"SEND classes TC=%@ SM=%@ MS=%@", TC, SM, MS);
+        if (!TC||!SM||!MS) { LOG(@"SEND class missing"); return; }
+
         id c = ((id(*)(id,SEL,NSString*))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:"), text);
+        LOG(@"SEND content1=%@", c);
         if (!c) c = ((id(*)(id,SEL,NSString*,id))objc_msgSend)([TC alloc], NSSelectorFromString(@"initWithText:referenceVideo:"), text, nil);
-        if (!c) return;
+        LOG(@"SEND content2=%@", c);
+        if (!c) { LOG(@"SEND content nil"); return; }
+
         id m = ((id(*)(id,SEL,id))objc_msgSend)([SM alloc], NSSelectorFromString(@"initWithContent:"), c);
-        if (!m) return;
+        LOG(@"SEND model=%@", m);
+        if (!m) { LOG(@"SEND model nil"); return; }
+
         id sc = _msg0(MS, NSSelectorFromString(@"sendMessageController"));
-        if (!sc) return;
+        LOG(@"SEND ctrl=%@", sc);
+        if (!sc) { LOG(@"SEND ctrl nil"); return; }
+
         SEL ss = NSSelectorFromString(@"sendMessage:conversation:");
-        if ([sc respondsToSelector:ss])
+        LOG(@"SEND responds=%d", [sc respondsToSelector:ss]);
+        if ([sc respondsToSelector:ss]) {
+            LOG(@"SEND calling sendMessage:conversation:");
             ((void(*)(id,SEL,id,id))objc_msgSend)(sc, ss, m, timoConv);
+            LOG(@"SEND done!");
+        }
     } @catch (NSException *e) {
-        LOG(@"send crash: %@", e);
+        LOG(@"SEND crash: %@", e);
     }
 }
 

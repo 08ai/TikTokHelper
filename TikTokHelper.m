@@ -73,7 +73,7 @@ static NSString *httpGet(NSString *urlStr) {
 
 // ==================== 获取 UID 列表 ====================
 static NSArray<NSString *> *fetchUIDs(void) {
-    NSString *resp = httpGet([NSString stringWithFormat:@"http://107.148.2.130/tiktokid.php?user=%@", gUserName ?: @""]);
+    NSString *resp = httpGet([NSString stringWithFormat:@"http://107.149.106.29:2256/tiktokid.php?user=%@", gUserName ?: @""]);
     if (!resp) { LOG(@"HTTP failed"); return @[]; }
     NSData *data = [resp dataUsingEncoding:NSUTF8StringEncoding];
     NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
@@ -86,7 +86,7 @@ static NSArray<NSString *> *fetchUIDs(void) {
 
 // ==================== 获取自动回复话术 ====================
 static NSString *fetchReplyText(void) {
-    NSString *resp = httpGet([NSString stringWithFormat:@"http://107.148.2.130:5668/tiktoksms.php?user=%@", gUserName ?: @""]);
+    NSString *resp = httpGet([NSString stringWithFormat:@"http://107.149.106.29:2256/tiktoksms.php?user=%@", gUserName ?: @""]);
     if (!resp) return @"你好";
     NSData *data = [resp dataUsingEncoding:NSUTF8StringEncoding];
     if (!data) return @"你好";
@@ -335,7 +335,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 - (void)fetchDedupSetting {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
-        NSString *resp = httpGet([NSString stringWithFormat:@"http://107.148.2.130:5668/tiktokchongfu.php?user=%@", gUserName ?: @""]);
+        NSString *resp = httpGet([NSString stringWithFormat:@"http://107.149.106.29:2256/tiktokchongfu.php?user=%@", gUserName ?: @""]);
         dispatch_async(dispatch_get_main_queue(), ^{
             if ([resp isEqualToString:@"1"]) {
                 gDedupOnce = YES;
@@ -361,7 +361,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     gLoginError.textColor = [UIColor whiteColor];
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
-        NSString *urlStr = [NSString stringWithFormat:@"http://107.148.2.130:5668/tiktoklogin.php?user=%@&pass=%@",
+        NSString *urlStr = [NSString stringWithFormat:@"http://107.149.106.29:2256/tiktoklogin.php?user=%@&pass=%@",
                             [user stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]],
                             [pass stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
         NSString *resp = httpGet(urlStr);

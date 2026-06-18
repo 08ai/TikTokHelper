@@ -328,8 +328,9 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     NSString *text = gSpeedField.text;
     if (text.length == 0) { gFollowSpeed = 0.3; return; }
     double val = [text doubleValue];
-    if (val <= 0) { gFollowSpeed = 0.3; return; }
-    gFollowSpeed = val / 1000.0; // 转换为秒
+    if (val == 0) { gFollowSpeed = 0; return; }      // 0 = 不限速
+    if (val < 0)  { gFollowSpeed = 0.3; return; }    // 负数无效
+    gFollowSpeed = val / 1000.0;
 }
 
 - (void)fetchDedupSetting {

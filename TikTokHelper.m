@@ -242,35 +242,11 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     setStatus(@"批量群发中...");
     LOG(@"Batch send START");
     NSArray *uids = @[@"7584084336589767698", @"7114345548233098241", @"7307413705494168578", @"3830352445428"];
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
-        for (NSInteger i = 0; i < uids.count && gIsBatchSending; i++) {
-            NSString *uid = uids[i];
-            dispatch_async(dispatch_get_main_queue(), ^{
-                setStatus([NSString stringWithFormat:@"群发 %ld/%lu: %@", (long)(i+1), (unsigned long)uids.count, uid]);
-            });
-            @try {
-                Class MS = NSClassFromString(@"AWEIMModuleService");
-                // 直接用模块服务的 getConversationWithPeerUid:completion: 获取会话
-                dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-                __block id conv = nil;
-                SEL sel = NSSelectorFromString(@"getConversationWithPeerUid:completion:");
-                void (^cb)(id, id) = ^(id c, id e) {
-                    conv = c;
-                    dispatch_semaphore_signal(sem);
-                };
-                ((void(*)(id,SEL,id,void(^)(id,id)))objc_msgSend)(MS, sel, uid, cb);
-                dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5*NSEC_PER_SEC));
-                LOG(@"Batch [%ld] uid=%@ conv=%@", (long)i, uid, conv ? NSStringFromClass([conv class]) : @"nil");
-                if (conv) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        [self sendViaTIMOCtrl:conv text:@"你好啊！在干嘛"];
-                    });
-                }
-            } @catch (NSException *e) {
-                LOG(@"Batch [%ld] crash: %@", (long)i, e);
-            }
-            [NSThread sleepForTimeInterval:gFollowSpeed];
-        }
+    [self batchSendNext:0 uids:uids];
+}
+
+- (void)batchSendNext:(NSInteger)i uids:(NSArray *)uids {
+    if (!gIsBatchSending || i >= uids.count) {
         dispatch_async(dispatch_get_main_queue(), ^{
             setStatus([NSString stringWithFormat:@"群发完成 %lu 人", (unsigned long)uids.count]);
             LOG(@"Batch send DONE");
@@ -278,7 +254,36 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
             [gBatchBtn setTitle:@"批量群发" forState:UIControlStateNormal];
             gBatchBtn.backgroundColor = rgb(0.75,0.3,0.85,0.9);
         });
-    });
+        return;
+    }
+    NSString *uid = uids[i];
+    setStatus([NSString stringWithFormat:@"群发 %ld/%lu: %@", (long)(i+1), (unsigned long)uids.count, uid]);
+
+    Class MS = NSClassFromString(@"AWEIMModuleService");
+    if (!MS) {
+        LOG(@"Batch [%ld] MS not found", (long)i);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, gFollowSpeed*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            [self batchSendNext:i+1 uids:uids];
+        });
+        return;
+    }
+    SEL sel = NSSelectorFromString(@"getConversationWithPeerUid:completion:");
+    LOG(@"Batch [%ld] calling getConversationWithPeerUid: %@", (long)i, uid);
+
+    // 注意: completion 签名可能是 void(^)(id conv, NSError *err) 或 void(^)(id conv)
+    __weak typeof(self) ws = self;
+    void (^cb)(id, id) = ^(id conv, id err) {
+        LOG(@"Batch [%ld] callback conv=%@ err=%@", (long)i, [conv class], err);
+        if (conv && gIsBatchSending) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [ws sendViaTIMOCtrl:conv text:@"你好啊！在干嘛"];
+            });
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, gFollowSpeed*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            [ws batchSendNext:i+1 uids:uids];
+        });
+    };
+    ((void(*)(id,SEL,id,void(^)(id,id)))objc_msgSend)(MS, sel, uid, cb);
 }
 
 - (void)onStopBatchSend {

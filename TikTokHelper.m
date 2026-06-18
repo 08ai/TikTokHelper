@@ -38,6 +38,7 @@ static BOOL      gAutoDM = NO;
 static BOOL      gDedupOnce = YES;
 static BOOL      gIsSending = NO;
 static BOOL      gIsLoggedIn = NO;
+static NSString  *gUserName;
 static NSMutableSet *gRepliedIDs;
 
 // 登录界面
@@ -71,7 +72,7 @@ static NSString *httpGet(NSString *urlStr) {
 
 // ==================== 获取 UID 列表 ====================
 static NSArray<NSString *> *fetchUIDs(void) {
-    NSString *resp = httpGet(@"http://107.148.2.130/tiktokid.php");
+    NSString *resp = httpGet([NSString stringWithFormat:@"http://107.148.2.130/tiktokid.php?user=%@", gUserName ?: @""]);
     if (!resp) { LOG(@"HTTP failed"); return @[]; }
     NSData *data = [resp dataUsingEncoding:NSUTF8StringEncoding];
     NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
@@ -84,7 +85,7 @@ static NSArray<NSString *> *fetchUIDs(void) {
 
 // ==================== 获取自动回复话术 ====================
 static NSString *fetchReplyText(void) {
-    NSString *resp = httpGet(@"http://107.148.2.130:5668/tiktoksms.php");
+    NSString *resp = httpGet([NSString stringWithFormat:@"http://107.148.2.130:5668/tiktoksms.php?user=%@", gUserName ?: @""]);
     if (!resp) return @"你好";
     NSData *data = [resp dataUsingEncoding:NSUTF8StringEncoding];
     if (!data) return @"你好";
@@ -324,7 +325,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 - (void)fetchDedupSetting {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
-        NSString *resp = httpGet(@"http://107.148.2.130:5668/tiktokchongfu.php");
+        NSString *resp = httpGet([NSString stringWithFormat:@"http://107.148.2.130:5668/tiktokchongfu.php?user=%@", gUserName ?: @""]);
         dispatch_async(dispatch_get_main_queue(), ^{
             if ([resp isEqualToString:@"1"]) {
                 gDedupOnce = YES;
@@ -358,6 +359,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (ok) {
                 gIsLoggedIn = YES;
+                gUserName = user;
                 gLoginError.text = nil;
                 [UIView animateWithDuration:0.3 animations:^{ gLoginView.alpha = 0.0; }];
                 LOG(@"Login OK: %@", user);

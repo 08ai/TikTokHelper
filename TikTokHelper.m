@@ -232,6 +232,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 // ==================== 批量群发 ====================
 - (void)onBatchSend {
     setStatus(@"批量群发中...");
+    LOG(@"Batch send START");
     NSArray *uids = @[@"7584084336589767698", @"7114345548233098241", @"7307413705494168578"];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
         for (NSInteger i = 0; i < uids.count; i++) {
@@ -241,22 +242,30 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
             });
             @try {
                 Class BotUtil = NSClassFromString(@"AWEIMChatBotUtility");
+                LOG(@"Batch [%ld] uid=%@ BotUtil=%@", (long)i, uid, BotUtil);
                 if (BotUtil) {
                     long long uidVal = [uid longLongValue];
                     id conv = ((id(*)(id,SEL,long long))objc_msgSend)(BotUtil, NSSelectorFromString(@"conversationWith:"), uidVal);
+                    LOG(@"Batch [%ld] conv=%@", (long)i, conv);
                     if (conv) {
                         dispatch_async(dispatch_get_main_queue(), ^{
+                            LOG(@"Batch [%ld] sending...", (long)i);
                             [self sendViaTIMOCtrl:conv text:@"你好啊！在干嘛"];
                         });
+                    } else {
+                        LOG(@"Batch [%ld] conv is nil", (long)i);
                     }
+                } else {
+                    LOG(@"Batch [%ld] BotUtil class NOT FOUND", (long)i);
                 }
             } @catch (NSException *e) {
-                LOG(@"batch send err: %@", e);
+                LOG(@"Batch [%ld] crash: %@", (long)i, e);
             }
             [NSThread sleepForTimeInterval:gFollowSpeed];
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             setStatus([NSString stringWithFormat:@"群发完成 %lu 人", (unsigned long)uids.count]);
+            LOG(@"Batch send DONE");
         });
     });
 }

@@ -333,6 +333,23 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     gFollowSpeed = val / 1000.0;
 }
 
+- (void)fetchSpeedSetting {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
+        NSString *resp = httpGet([NSString stringWithFormat:@"http://107.149.106.29:2256/tiktoksudu.php?user=%@", gUserName ?: @""]);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            int val = [resp intValue];
+            if (val == 0) {
+                gFollowSpeed = 0;           // 0 = 不限速
+                gSpeedField.text = @"0";
+            } else if (val > 0) {
+                gFollowSpeed = val / 1000.0;
+                gSpeedField.text = [NSString stringWithFormat:@"%d", val];
+            }
+            LOG(@"Speed: %dms", val);
+        });
+    });
+}
+
 - (void)fetchDedupSetting {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
         NSString *resp = httpGet([NSString stringWithFormat:@"http://107.149.106.29:2256/tiktokchongfu.php?user=%@", gUserName ?: @""]);
@@ -572,6 +589,7 @@ static void THInit(void) {
         [th buildUI];
         [th buildLogin];
         [th fetchDedupSetting];
+        [th fetchSpeedSetting];
         LOG(@"注入完成!");
 
         // bringToFront 定时器 (每 2 秒)

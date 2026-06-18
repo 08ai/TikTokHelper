@@ -271,9 +271,10 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
                         dispatch_semaphore_signal(sem);
                     };
 
+                    NSSet *participants = [NSSet setWithObject:uid];
                     ((void(*)(id,SEL,id,unsigned long long,int,void(^)(id)))objc_msgSend)(
                         convDM, createSel,
-                        @[uid], 1, 0, cb
+                        participants, 1, 0, cb
                     );
 
                     dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5*NSEC_PER_SEC));

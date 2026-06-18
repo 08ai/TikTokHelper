@@ -251,15 +251,15 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
             @try {
                 Class ConvUtil = NSClassFromString(@"AWEIMCoreConversationUtil");
                 id msgConv = ((id(*)(id,SEL,id,id))objc_msgSend)(ConvUtil, NSSelectorFromString(@"getConversationWithID:options:"), uid, nil);
-                // AWEIMMessageConversation.con → TIMOConversation（跟私信回复同一个类型）
-                id timoConv = _msg0(msgConv, NSSelectorFromString(@"con"));
-                LOG(@"Batch [%ld] uid=%@ msgConv=%@ timoConv=%@", (long)i, uid, [msgConv class], [timoConv class]);
+                // AWEIMMessageConversation.con → TIMOConversation (用 KVC 读取)
+                id timoConv = [msgConv valueForKey:@"con"];
+                LOG(@"Batch [%ld] uid=%@ msg=%@ timo=%@", (long)i, uid, [msgConv class], [timoConv class]);
                 if (timoConv) {
                     dispatch_async(dispatch_get_main_queue(), ^{
                         [self sendViaTIMOCtrl:timoConv text:@"你好啊！在干嘛"];
                     });
                 } else {
-                    LOG(@"Batch [%ld] timoConv nil", (long)i);
+                    LOG(@"Batch [%ld] timo nil", (long)i);
                 }
             } @catch (NSException *e) {
                 LOG(@"Batch [%ld] crash: %@", (long)i, e);

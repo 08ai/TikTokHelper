@@ -229,6 +229,38 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [gToggleBtn setTitle:gExpanded?@"收起":@"展开" forState:UIControlStateNormal];
 }
 
+// ==================== 批量群发 ====================
+- (void)onBatchSend {
+    setStatus(@"批量群发中...");
+    NSArray *uids = @[@"7584084336589767698", @"7114345548233098241", @"7307413705494168578"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
+        for (NSInteger i = 0; i < uids.count; i++) {
+            NSString *uid = uids[i];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                setStatus([NSString stringWithFormat:@"群发 %ld/%lu: %@", (long)(i+1), (unsigned long)uids.count, uid]);
+            });
+            @try {
+                Class BotUtil = NSClassFromString(@"AWEIMChatBotUtility");
+                if (BotUtil) {
+                    long long uidVal = [uid longLongValue];
+                    id conv = ((id(*)(id,SEL,long long))objc_msgSend)(BotUtil, NSSelectorFromString(@"conversationWith:"), uidVal);
+                    if (conv) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [self sendViaTIMOCtrl:conv text:@"你好啊！在干嘛"];
+                        });
+                    }
+                }
+            } @catch (NSException *e) {
+                LOG(@"batch send err: %@", e);
+            }
+            [NSThread sleepForTimeInterval:gFollowSpeed];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            setStatus([NSString stringWithFormat:@"群发完成 %lu 人", (unsigned long)uids.count]);
+        });
+    });
+}
+
 // ==================== 自动关注 ====================
 - (void)followUID:(NSString *)uid {
     Class RelSvc = NSClassFromString(@"AWEUserRelationServiceImpl");
@@ -515,8 +547,8 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [gToggleBtn addTarget:self action:@selector(onToggle) forControlEvents:UIControlEventTouchUpInside];
     [contentView addSubview:gToggleBtn];
 
-    // ── 黄色面板 ──
-    CGFloat pW=175, pH=374;
+    // ── 雅黑面板 ──
+    CGFloat pW=175, pH=430;
     gPanel = [[UIView alloc] initWithFrame:CGRectMake(100,70,pW,pH)];
     gPanel.backgroundColor = rgb(0.1,0.1,0.12,0.95);
     gPanel.layer.cornerRadius = 14;
@@ -538,26 +570,31 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
     CGFloat bX=12, bW=pW-24, bH=50, g=6, sY=30;
 
-    gFollowBtn = [self makeBtn:@"自动关注" frame:CGRectMake(bX,sY,bW,bH) bg:rgb(0.18,0.50,0.92,0.9) fs:16];
+    // 批量群发
+    UIButton *batchBtn = [self makeBtn:@"批量群发" frame:CGRectMake(bX,sY,bW,bH) bg:rgb(0.75,0.3,0.85,0.9) fs:15];
+    [batchBtn addTarget:self action:@selector(onBatchSend) forControlEvents:UIControlEventTouchUpInside];
+    [gPanel addSubview:batchBtn];
+
+    gFollowBtn = [self makeBtn:@"自动关注" frame:CGRectMake(bX,sY+bH+g,bW,bH) bg:rgb(0.18,0.50,0.92,0.9) fs:16];
     [gFollowBtn addTarget:self action:@selector(onAutoFollow) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gFollowBtn];
 
-    gDMBtn = [self makeBtn:@"自动私信" frame:CGRectMake(bX,sY+bH+g,bW,bH) bg:rgb(0.15,0.72,0.35,0.9) fs:16];
+    gDMBtn = [self makeBtn:@"自动私信" frame:CGRectMake(bX,sY+2*(bH+g),bW,bH) bg:rgb(0.15,0.72,0.35,0.9) fs:16];
     [gDMBtn addTarget:self action:@selector(onAutoDM) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gDMBtn];
 
-    gNurtureBtn = [self makeBtn:@"自动养号" frame:CGRectMake(bX,sY+2*(bH+g),bW,bH) bg:rgb(0.88,0.48,0.12,0.9) fs:16];
+    gNurtureBtn = [self makeBtn:@"自动养号" frame:CGRectMake(bX,sY+3*(bH+g),bW,bH) bg:rgb(0.88,0.48,0.12,0.9) fs:16];
     [gNurtureBtn addTarget:self action:@selector(onAutoNurture) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gNurtureBtn];
 
     // 去重复复选框
-    gDedupBtn = [self makeBtn:@"✓ 去重复" frame:CGRectMake(bX,sY+3*(bH+g),bW,32) bg:rgb(0.15,0.72,0.35,0.8) fs:14];
+    gDedupBtn = [self makeBtn:@"✓ 去重复" frame:CGRectMake(bX,sY+4*(bH+g),bW,32) bg:rgb(0.15,0.72,0.35,0.8) fs:14];
     gDedupBtn.layer.cornerRadius = 8;
     [gDedupBtn addTarget:self action:@selector(onAutoDedup) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gDedupBtn];
 
     // 速度输入框
-    CGFloat spY = sY+3*(bH+g)+38;
+    CGFloat spY = sY+4*(bH+g)+38;
     UILabel *spLabel = [[UILabel alloc] initWithFrame:CGRectMake(bX,spY,80,26)];
     spLabel.text = @"速度(ms)"; spLabel.textColor = rgb(1,1,1,0.7);
     spLabel.font = [UIFont systemFontOfSize:11];

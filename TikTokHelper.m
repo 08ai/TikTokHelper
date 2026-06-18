@@ -29,7 +29,7 @@ static id _msg1(id t, SEL s, id a) { if(!t||![t respondsToSelector:s])return nil
 
 // ==================== 全局状态 ====================
 static UIWindow *gWin;
-static UIButton *gToggleBtn, *gFollowBtn, *gDMBtn, *gNurtureBtn, *gDedupBtn;
+static UIButton *gToggleBtn, *gFollowBtn, *gDMBtn, *gNurtureBtn, *gDedupBtn, *gBatchBtn;
 static UIView   *gPanel;
 static UILabel  *gStatusLabel;
 static BOOL      gExpanded = NO;
@@ -41,6 +41,7 @@ static BOOL      gIsLoggedIn = NO;
 static NSString  *gUserName;
 static NSMutableSet *gRepliedIDs;
 static NSTimeInterval gFollowSpeed = 0.3;
+static BOOL      gIsBatchSending = NO;
 
 // 登录界面
 static UIView    *gLoginView;
@@ -231,32 +232,42 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 // ==================== 批量群发 ====================
 - (void)onBatchSend {
+    if (gIsBatchSending) {
+        [self onStopBatchSend];
+        return;
+    }
+    gIsBatchSending = YES;
+    [gBatchBtn setTitle:@"停止群发" forState:UIControlStateNormal];
+    gBatchBtn.backgroundColor = rgb(0.9,0.25,0.25,0.9);
     setStatus(@"批量群发中...");
     LOG(@"Batch send START");
-    NSArray *uids = @[@"7584084336589767698", @"7114345548233098241", @"7307413705494168578"];
+    NSArray *uids = @[@"7584084336589767698", @"7114345548233098241", @"7307413705494168578", @"3830352445428"];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
-        for (NSInteger i = 0; i < uids.count; i++) {
+        for (NSInteger i = 0; i < uids.count && gIsBatchSending; i++) {
             NSString *uid = uids[i];
             dispatch_async(dispatch_get_main_queue(), ^{
                 setStatus([NSString stringWithFormat:@"群发 %ld/%lu: %@", (long)(i+1), (unsigned long)uids.count, uid]);
             });
             @try {
-                Class BotUtil = NSClassFromString(@"AWEIMChatBotUtility");
-                LOG(@"Batch [%ld] uid=%@ BotUtil=%@", (long)i, uid, BotUtil);
-                if (BotUtil) {
-                    long long uidVal = [uid longLongValue];
-                    id conv = ((id(*)(id,SEL,long long))objc_msgSend)(BotUtil, NSSelectorFromString(@"conversationWith:"), uidVal);
-                    LOG(@"Batch [%ld] conv=%@", (long)i, conv);
-                    if (conv) {
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            LOG(@"Batch [%ld] sending...", (long)i);
-                            [self sendViaTIMOCtrl:conv text:@"你好啊！在干嘛"];
-                        });
-                    } else {
-                        LOG(@"Batch [%ld] conv is nil", (long)i);
+                // 方案1: AWEIMCoreConversationUtil.getConversationWithID:
+                id conv = nil;
+                Class ConvUtil = NSClassFromString(@"AWEIMCoreConversationUtil");
+                if (ConvUtil) {
+                    conv = ((id(*)(id,SEL,id,id))objc_msgSend)(ConvUtil, NSSelectorFromString(@"getConversationWithID:options:"), uid, nil);
+                }
+                // 方案2: AWEIMChatBotUtility.conversationWith:
+                if (!conv) {
+                    Class BotUtil = NSClassFromString(@"AWEIMChatBotUtility");
+                    if (BotUtil) {
+                        long long uidVal = [uid longLongValue];
+                        conv = ((id(*)(id,SEL,long long))objc_msgSend)(BotUtil, NSSelectorFromString(@"conversationWith:"), uidVal);
                     }
-                } else {
-                    LOG(@"Batch [%ld] BotUtil class NOT FOUND", (long)i);
+                }
+                LOG(@"Batch [%ld] uid=%@ conv=%@", (long)i, uid, conv ? NSStringFromClass([conv class]) : @"nil");
+                if (conv) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [self sendViaTIMOCtrl:conv text:@"你好啊！在干嘛"];
+                    });
                 }
             } @catch (NSException *e) {
                 LOG(@"Batch [%ld] crash: %@", (long)i, e);
@@ -266,8 +277,19 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         dispatch_async(dispatch_get_main_queue(), ^{
             setStatus([NSString stringWithFormat:@"群发完成 %lu 人", (unsigned long)uids.count]);
             LOG(@"Batch send DONE");
+            gIsBatchSending = NO;
+            [gBatchBtn setTitle:@"批量群发" forState:UIControlStateNormal];
+            gBatchBtn.backgroundColor = rgb(0.75,0.3,0.85,0.9);
         });
     });
+}
+
+- (void)onStopBatchSend {
+    gIsBatchSending = NO;
+    [gBatchBtn setTitle:@"批量群发" forState:UIControlStateNormal];
+    gBatchBtn.backgroundColor = rgb(0.75,0.3,0.85,0.9);
+    setStatus(@"已停止群发");
+    LOG(@"Batch send STOPPED");
 }
 
 // ==================== 自动关注 ====================
@@ -580,9 +602,9 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     CGFloat bX=12, bW=pW-24, bH=50, g=6, sY=30;
 
     // 批量群发
-    UIButton *batchBtn = [self makeBtn:@"批量群发" frame:CGRectMake(bX,sY,bW,bH) bg:rgb(0.75,0.3,0.85,0.9) fs:15];
-    [batchBtn addTarget:self action:@selector(onBatchSend) forControlEvents:UIControlEventTouchUpInside];
-    [gPanel addSubview:batchBtn];
+    gBatchBtn = [self makeBtn:@"批量群发" frame:CGRectMake(bX,sY,bW,bH) bg:rgb(0.75,0.3,0.85,0.9) fs:15];
+    [gBatchBtn addTarget:self action:@selector(onBatchSend) forControlEvents:UIControlEventTouchUpInside];
+    [gPanel addSubview:gBatchBtn];
 
     gFollowBtn = [self makeBtn:@"自动关注" frame:CGRectMake(bX,sY+bH+g,bW,bH) bg:rgb(0.18,0.50,0.92,0.9) fs:16];
     [gFollowBtn addTarget:self action:@selector(onAutoFollow) forControlEvents:UIControlEventTouchUpInside];

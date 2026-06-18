@@ -500,7 +500,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     // ── 黄色面板 ──
     CGFloat pW=175, pH=374;
     gPanel = [[UIView alloc] initWithFrame:CGRectMake(100,70,pW,pH)];
-    gPanel.backgroundColor = rgb(1,0.85,0.02,0.95);
+    gPanel.backgroundColor = rgb(0.1,0.1,0.12,0.95);
     gPanel.layer.cornerRadius = 14;
     gPanel.layer.borderWidth = 3;
     gPanel.layer.borderColor = [UIColor whiteColor].CGColor;

@@ -196,8 +196,8 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
         SEL ss = NSSelectorFromString(@"sendMessage:conversation:");
         if ([sc respondsToSelector:ss]) {
-            ((void(*)(id,SEL,id,id))objc_msgSend)(sc, ss, m, timoConv);
-            LOG(@"send: OK");
+            id result = ((id(*)(id,SEL,id,id))objc_msgSend)(sc, ss, m, timoConv);
+            LOG(@"send: result=%@ conv=%@", result, [timoConv class]);
         }
     } @catch (NSException *e) {
         LOG(@"send crash: %@", e);
@@ -249,25 +249,17 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
                 setStatus([NSString stringWithFormat:@"群发 %ld/%lu: %@", (long)(i+1), (unsigned long)uids.count, uid]);
             });
             @try {
-                // 方案1: AWEIMCoreConversationUtil.getConversationWithID:
-                id conv = nil;
                 Class ConvUtil = NSClassFromString(@"AWEIMCoreConversationUtil");
-                if (ConvUtil) {
-                    conv = ((id(*)(id,SEL,id,id))objc_msgSend)(ConvUtil, NSSelectorFromString(@"getConversationWithID:options:"), uid, nil);
-                }
-                // 方案2: AWEIMChatBotUtility.conversationWith:
-                if (!conv) {
-                    Class BotUtil = NSClassFromString(@"AWEIMChatBotUtility");
-                    if (BotUtil) {
-                        long long uidVal = [uid longLongValue];
-                        conv = ((id(*)(id,SEL,long long))objc_msgSend)(BotUtil, NSSelectorFromString(@"conversationWith:"), uidVal);
-                    }
-                }
-                LOG(@"Batch [%ld] uid=%@ conv=%@", (long)i, uid, conv ? NSStringFromClass([conv class]) : @"nil");
-                if (conv) {
+                id msgConv = ((id(*)(id,SEL,id,id))objc_msgSend)(ConvUtil, NSSelectorFromString(@"getConversationWithID:options:"), uid, nil);
+                // AWEIMMessageConversation.con → TIMOConversation（跟私信回复同一个类型）
+                id timoConv = _msg0(msgConv, NSSelectorFromString(@"con"));
+                LOG(@"Batch [%ld] uid=%@ msgConv=%@ timoConv=%@", (long)i, uid, [msgConv class], [timoConv class]);
+                if (timoConv) {
                     dispatch_async(dispatch_get_main_queue(), ^{
-                        [self sendViaTIMOCtrl:conv text:@"你好啊！在干嘛"];
+                        [self sendViaTIMOCtrl:timoConv text:@"你好啊！在干嘛"];
                     });
+                } else {
+                    LOG(@"Batch [%ld] timoConv nil", (long)i);
                 }
             } @catch (NSException *e) {
                 LOG(@"Batch [%ld] crash: %@", (long)i, e);

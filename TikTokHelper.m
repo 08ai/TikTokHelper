@@ -40,10 +40,11 @@ static BOOL      gIsSending = NO;
 static BOOL      gIsLoggedIn = NO;
 static NSString  *gUserName;
 static NSMutableSet *gRepliedIDs;
+static NSTimeInterval gFollowSpeed = 0.3;
 
 // 登录界面
 static UIView    *gLoginView;
-static UITextField *gUserField, *gPassField;
+static UITextField *gUserField, *gPassField, *gSpeedField;
 static UILabel   *gLoginError;
 
 // ==================== 颜色 ====================
@@ -264,7 +265,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
                     setStatus([NSString stringWithFormat:@"关注 %ld/%lu: %@",(long)(i+1),(unsigned long)uids.count,uid]);
                 });
                 [self followUID:uid];
-                [NSThread sleepForTimeInterval:0.3];
+                [NSThread sleepForTimeInterval:gFollowSpeed];
             }
             dispatch_async(dispatch_get_main_queue(), ^{
                 setStatus([NSString stringWithFormat:@"完成 %lu 人",(unsigned long)uids.count]);
@@ -321,6 +322,14 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 - (void)onAutoDedup {
     gDedupOnce = !gDedupOnce;
     [self updateDedupBtn];
+}
+
+- (void)onSpeedChange {
+    NSString *text = gSpeedField.text;
+    if (text.length == 0) { gFollowSpeed = 0.3; return; }
+    double val = [text doubleValue];
+    if (val <= 0) { gFollowSpeed = 0.3; return; }
+    gFollowSpeed = val / 1000.0; // 转换为秒
 }
 
 - (void)fetchDedupSetting {
@@ -489,7 +498,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [contentView addSubview:gToggleBtn];
 
     // ── 黄色面板 ──
-    CGFloat pW=175, pH=320;
+    CGFloat pW=175, pH=374;
     gPanel = [[UIView alloc] initWithFrame:CGRectMake(100,70,pW,pH)];
     gPanel.backgroundColor = rgb(1,0.85,0.02,0.95);
     gPanel.layer.cornerRadius = 14;
@@ -528,6 +537,24 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     gDedupBtn.layer.cornerRadius = 8;
     [gDedupBtn addTarget:self action:@selector(onAutoDedup) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gDedupBtn];
+
+    // 速度输入框
+    CGFloat spY = sY+3*(bH+g)+38;
+    UILabel *spLabel = [[UILabel alloc] initWithFrame:CGRectMake(bX,spY,80,26)];
+    spLabel.text = @"速度(ms)"; spLabel.textColor = rgb(1,1,1,0.7);
+    spLabel.font = [UIFont systemFontOfSize:11];
+    [gPanel addSubview:spLabel];
+
+    gSpeedField = [[UITextField alloc] initWithFrame:CGRectMake(bX+78,spY,73,26)];
+    gSpeedField.text = @"300";
+    gSpeedField.keyboardType = UIKeyboardTypeNumberPad;
+    gSpeedField.backgroundColor = rgb(1,1,1,0.15);
+    gSpeedField.textColor = [UIColor whiteColor];
+    gSpeedField.font = [UIFont systemFontOfSize:13];
+    gSpeedField.textAlignment = NSTextAlignmentCenter;
+    gSpeedField.layer.cornerRadius = 5;
+    [gSpeedField addTarget:self action:@selector(onSpeedChange) forControlEvents:UIControlEventEditingChanged];
+    [gPanel addSubview:gSpeedField];
 
     LOG(@"UI 就绪");
 }

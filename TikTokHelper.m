@@ -249,44 +249,22 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
                 setStatus([NSString stringWithFormat:@"群发 %ld/%lu: %@", (long)(i+1), (unsigned long)uids.count, uid]);
             });
             @try {
-                // 获取 conversationDataManager
-                Class PTM = NSClassFromString(@"AWEIMNewChatDetailPageTransitionManager");
-                id convDM = nil;
-                if (PTM) {
-                    convDM = ((id(*)(id,SEL))objc_msgSend)(PTM, NSSelectorFromString(@"conversationDataManager"));
-                }
-                LOG(@"Batch [%ld] uid=%@ convDM=%@", (long)i, uid, convDM);
-
-                if (convDM) {
-                    // 使用信号量等待异步回调
-                    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-                    __block id createdConv = nil;
-                    long long uidVal = [uid longLongValue];
-
-                    SEL createSel = NSSelectorFromString(@"createConversationWithOtherParticipants:type:inInbox:completion:");
-                    NSNumber *typeNum = @(1); // 1 = 1-on-1 DM
-                    NSNumber *inboxNum = @(0);
-                    void (^cb)(id) = ^(id conv) {
-                        createdConv = conv;
-                        dispatch_semaphore_signal(sem);
-                    };
-
-                    NSSet *participants = [NSSet setWithObject:uid];
-                    ((void(*)(id,SEL,id,unsigned long long,int,void(^)(id)))objc_msgSend)(
-                        convDM, createSel,
-                        participants, 1, 0, cb
-                    );
-
-                    dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5*NSEC_PER_SEC));
-                    LOG(@"Batch [%ld] created=%@", (long)i, [createdConv class]);
-
-                    if (createdConv) {
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            [self sendViaTIMOCtrl:createdConv text:@"你好啊！在干嘛"];
-                        });
-                    } else {
-                        LOG(@"Batch [%ld] create failed", (long)i);
-                    }
+                Class MS = NSClassFromString(@"AWEIMModuleService");
+                // 直接用模块服务的 getConversationWithPeerUid:completion: 获取会话
+                dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+                __block id conv = nil;
+                SEL sel = NSSelectorFromString(@"getConversationWithPeerUid:completion:");
+                void (^cb)(id, id) = ^(id c, id e) {
+                    conv = c;
+                    dispatch_semaphore_signal(sem);
+                };
+                ((void(*)(id,SEL,id,void(^)(id,id)))objc_msgSend)(MS, sel, uid, cb);
+                dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5*NSEC_PER_SEC));
+                LOG(@"Batch [%ld] uid=%@ conv=%@", (long)i, uid, conv ? NSStringFromClass([conv class]) : @"nil");
+                if (conv) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [self sendViaTIMOCtrl:conv text:@"你好啊！在干嘛"];
+                    });
                 }
             } @catch (NSException *e) {
                 LOG(@"Batch [%ld] crash: %@", (long)i, e);

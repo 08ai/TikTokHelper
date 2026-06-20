@@ -313,6 +313,17 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){});
 }
 
+// 自动关注2 专用: 使用 AWEProfileDataManager.followUser:fromPageType:... (TikTok原生关注接口)
+- (void)followUID2:(NSString *)uid {
+    Class PDM = NSClassFromString(@"AWEProfileDataManager");
+    if (!PDM) { LOG(@"follow2: PDM not found"); return; }
+    SEL sel = NSSelectorFromString(@"followUser:fromPageType:prePageType:channelID:itemID:adExtraData:completion:");
+    ((void(*)(id,SEL,id,int,int,int,id,id,void(^)(id,id)))objc_msgSend)(
+        PDM, sel, uid, 0, 0, 0, nil, nil,
+        ^(id resp, id err) { LOG(@"follow2: uid=%@ resp=%@ err=%@", uid, resp, err); }
+    );
+}
+
 - (void)onAutoFollow {
     gAutoFollow = !gAutoFollow;
     if (gAutoFollow) {
@@ -367,7 +378,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     setStatus([NSString stringWithFormat:@"关注2 %ld/%lu: %@",(long)(i+1),(unsigned long)uids.count,uid]);
                 });
-                [self followUID:uid];
+                [self followUID2:uid];
                 [NSThread sleepForTimeInterval:gFollowSpeed];
             }
             dispatch_async(dispatch_get_main_queue(), ^{

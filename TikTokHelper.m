@@ -313,33 +313,9 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){});
 }
 
-// 自动关注2 专用: 使用 AWEUserRelationServiceImpl.follow:isForceOnlyOneRequestInAir:completion: (跟自动关注1同层但用不同标志)
+// 自动关注2 专用
 - (void)followUID2:(NSString *)uid {
-    Class RelSvc = NSClassFromString(@"AWEUserRelationServiceImpl");
-    Class UserModel = NSClassFromString(@"AWEUserModel");
-    Class CtxCls = NSClassFromString(@"AWEUserRelationContext");
-    if (!RelSvc || !UserModel || !CtxCls) return;
-
-    id user = [[UserModel alloc] init];
-    [user setValue:uid forKey:@"userID"];
-
-    id ctx = [[CtxCls alloc] init];
-    [ctx setValue:user forKey:@"user"];
-    [ctx setValue:@(0) forKey:@"fromPageType"];
-
-    // 使用 isForceOnlyOneRequestInAir 版本（跟 follow:completion: 不同）
-    SEL sel = NSSelectorFromString(@"follow:isForceOnlyOneRequestInAir:completion:");
-    if ([RelSvc respondsToSelector:sel]) {
-        ((void(*)(id,SEL,id,BOOL,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, NO, ^(id r){
-            LOG(@"follow2: uid=%@ resp=%@", uid, r);
-        });
-    } else {
-        // fallback 到 follow:completion:
-        SEL sel2 = NSSelectorFromString(@"follow:completion:");
-        ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel2, ctx, ^(id r){
-            LOG(@"follow2(fallback): uid=%@ resp=%@", uid, r);
-        });
-    }
+    [self followUID:uid];  // 先跟自动关注1走完全一样的逻辑，确保基础能力
 }
 
 - (void)onAutoFollow {

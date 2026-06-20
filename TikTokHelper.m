@@ -452,6 +452,8 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
             if (ok) {
                 gIsLoggedIn = YES;
                 gUserName = user;
+                [[NSUserDefaults standardUserDefaults] setObject:user forKey:@"TH_UserName"];
+                [[NSUserDefaults standardUserDefaults] synchronize];
                 gLoginError.text = nil;
                 [UIView animateWithDuration:0.3 animations:^{ gLoginView.alpha = 0.0; }];
                 LOG(@"Login OK: %@", user);
@@ -654,6 +656,13 @@ __attribute__((constructor))
 static void THInit(void) {
     gRepliedIDs = [NSMutableSet set];
     gDedupOnce = YES;
+    // 恢复上次登录
+    NSString *savedUser = [[NSUserDefaults standardUserDefaults] stringForKey:@"TH_UserName"];
+    if (savedUser.length > 0) {
+        gIsLoggedIn = YES;
+        gUserName = savedUser;
+        LOG(@"Auto-login: %@", savedUser);
+    }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         TikTokHelper *th = [[TikTokHelper alloc] init];
         [th buildUI];

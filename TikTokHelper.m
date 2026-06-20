@@ -29,11 +29,12 @@ static id _msg1(id t, SEL s, id a) { if(!t||![t respondsToSelector:s])return nil
 
 // ==================== 全局状态 ====================
 static UIWindow *gWin;
-static UIButton *gToggleBtn, *gFollowBtn, *gDMBtn, *gNurtureBtn, *gDedupBtn, *gBatchBtn;
+static UIButton *gToggleBtn, *gFollowBtn, *gFollow2Btn, *gDMBtn, *gNurtureBtn, *gDedupBtn, *gBatchBtn;
 static UIView   *gPanel;
 static UILabel  *gStatusLabel;
 static BOOL      gExpanded = NO;
 static BOOL      gAutoFollow = NO;
+static BOOL      gAutoFollow2 = NO;
 static BOOL      gAutoDM = NO;
 static BOOL      gDedupOnce = YES;
 static BOOL      gIsSending = NO;
@@ -348,6 +349,43 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     }
 }
 
+// ==================== 自动关注2 ====================
+- (void)onAutoFollow2 {
+    gAutoFollow2 = !gAutoFollow2;
+    if (gAutoFollow2) {
+        [gFollow2Btn setTitle:@"停止关注2" forState:UIControlStateNormal];
+        gFollow2Btn.backgroundColor = rgb(0.85,0.25,0.25,0.9);
+        setStatus(@"获取用户列表...");
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
+            NSArray *uids = fetchUIDs();
+            if (uids.count == 0) { setStatus(@"无用户"); gAutoFollow2=NO; return; }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                setStatus([NSString stringWithFormat:@"开始关注2 %lu 人",(unsigned long)uids.count]);
+            });
+            for (NSInteger i = 0; i < uids.count && gAutoFollow2; i++) {
+                NSString *uid = uids[i];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    setStatus([NSString stringWithFormat:@"关注2 %ld/%lu: %@",(long)(i+1),(unsigned long)uids.count,uid]);
+                });
+                [self followUID:uid];
+                [NSThread sleepForTimeInterval:gFollowSpeed];
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                setStatus([NSString stringWithFormat:@"完成2 %lu 人",(unsigned long)uids.count]);
+                if (gAutoFollow2) {
+                    gAutoFollow2 = NO;
+                    [gFollow2Btn setTitle:@"自动关注2" forState:UIControlStateNormal];
+                    gFollow2Btn.backgroundColor = rgb(0.18,0.50,0.92,0.9);
+                }
+            });
+        });
+    } else {
+        [gFollow2Btn setTitle:@"自动关注2" forState:UIControlStateNormal];
+        gFollow2Btn.backgroundColor = rgb(0.18,0.50,0.92,0.9);
+        setStatus(@"已停止关注2");
+    }
+}
+
 // ==================== 自动私信 ====================
 - (void)onAutoDM {
     gAutoDM = !gAutoDM;
@@ -583,7 +621,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [contentView addSubview:gToggleBtn];
 
     // ── 雅黑面板 ──
-    CGFloat pW=175, pH=430;
+    CGFloat pW=175, pH=486;
     gPanel = [[UIView alloc] initWithFrame:CGRectMake(100,70,pW,pH)];
     gPanel.backgroundColor = rgb(0.1,0.1,0.12,0.95);
     gPanel.layer.cornerRadius = 14;
@@ -614,22 +652,26 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [gFollowBtn addTarget:self action:@selector(onAutoFollow) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gFollowBtn];
 
-    gDMBtn = [self makeBtn:@"自动私信" frame:CGRectMake(bX,sY+2*(bH+g),bW,bH) bg:rgb(0.15,0.72,0.35,0.9) fs:16];
+    gFollow2Btn = [self makeBtn:@"自动关注2" frame:CGRectMake(bX,sY+2*(bH+g),bW,bH) bg:rgb(0.18,0.50,0.92,0.9) fs:16];
+    [gFollow2Btn addTarget:self action:@selector(onAutoFollow2) forControlEvents:UIControlEventTouchUpInside];
+    [gPanel addSubview:gFollow2Btn];
+
+    gDMBtn = [self makeBtn:@"自动私信" frame:CGRectMake(bX,sY+3*(bH+g),bW,bH) bg:rgb(0.15,0.72,0.35,0.9) fs:16];
     [gDMBtn addTarget:self action:@selector(onAutoDM) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gDMBtn];
 
-    gNurtureBtn = [self makeBtn:@"自动养号" frame:CGRectMake(bX,sY+3*(bH+g),bW,bH) bg:rgb(0.88,0.48,0.12,0.9) fs:16];
+    gNurtureBtn = [self makeBtn:@"自动养号" frame:CGRectMake(bX,sY+4*(bH+g),bW,bH) bg:rgb(0.88,0.48,0.12,0.9) fs:16];
     [gNurtureBtn addTarget:self action:@selector(onAutoNurture) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gNurtureBtn];
 
     // 去重复复选框
-    gDedupBtn = [self makeBtn:@"✓ 去重复" frame:CGRectMake(bX,sY+4*(bH+g),bW,32) bg:rgb(0.15,0.72,0.35,0.8) fs:14];
+    gDedupBtn = [self makeBtn:@"✓ 去重复" frame:CGRectMake(bX,sY+5*(bH+g),bW,32) bg:rgb(0.15,0.72,0.35,0.8) fs:14];
     gDedupBtn.layer.cornerRadius = 8;
     [gDedupBtn addTarget:self action:@selector(onAutoDedup) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gDedupBtn];
 
     // 速度输入框
-    CGFloat spY = sY+4*(bH+g)+38;
+    CGFloat spY = sY+5*(bH+g)+38;
     UILabel *spLabel = [[UILabel alloc] initWithFrame:CGRectMake(bX,spY,80,26)];
     spLabel.text = @"速度(ms)"; spLabel.textColor = rgb(1,1,1,0.7);
     spLabel.font = [UIFont systemFontOfSize:11];

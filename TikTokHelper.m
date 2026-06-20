@@ -40,9 +40,11 @@ static BOOL      gDedupOnce = YES;
 static BOOL      gIsSending = NO;
 static BOOL      gIsLoggedIn = NO;
 static NSString  *gUserName;
+static NSString  *gDeviceUDID;
 static NSMutableSet *gRepliedIDs;
 static NSTimeInterval gFollowSpeed = 0.3;
 static BOOL      gIsBatchSending = NO;
+static BOOL      gIsBanned = NO;
 
 // 登录界面
 static UIView    *gLoginView;
@@ -361,6 +363,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 }
 
 - (void)onAutoFollow {
+    if (gIsBanned) { setStatus(@"账号已被禁用"); return; }
     gAutoFollow = !gAutoFollow;
     if (gAutoFollow) {
         [gFollowBtn setTitle:@"停止关注" forState:UIControlStateNormal];
@@ -398,6 +401,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 // ==================== 自动关注2 ====================
 - (void)onAutoFollow2 {
+    if (gIsBanned) { setStatus(@"账号已被禁用"); return; }
     LOG(@"FOLLOW2 TAP gAutoFollow2=%d", gAutoFollow2);
     gAutoFollow2 = !gAutoFollow2;
     if (gAutoFollow2) {
@@ -752,12 +756,29 @@ static void THInit(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         gRepliedIDs = [NSMutableSet set];
         gDedupOnce = YES;
+
+        // 设备唯一ID
+        gDeviceUDID = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
+        LOG(@"Device UDID: %@", gDeviceUDID);
+
         // 恢复上次登录
         NSString *savedUser = [[NSUserDefaults standardUserDefaults] stringForKey:@"TH_UserName"];
         if (savedUser.length > 0) {
             gIsLoggedIn = YES;
             gUserName = savedUser;
             LOG(@"Auto-login: %@", savedUser);
+            // 检查是否被封禁
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
+                NSString *resp = httpGet([NSString stringWithFormat:@"http://107.149.106.29:2256/tiktokcheckban.php?user=%@", savedUser]);
+                if ([resp isEqualToString:@"BANNED"]) {
+                    gIsBanned = YES;
+                    gIsLoggedIn = NO;
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        setStatus(@"账号已被禁用");
+                    });
+                    LOG(@"BANNED: %@", savedUser);
+                }
+            });
         }
         TikTokHelper *th = [[TikTokHelper alloc] init];
         [th buildUI];
@@ -774,10 +795,12 @@ static void THInit(void) {
         // 自动私信——method swizzle（事件驱动）
         [TikTokHelper installMessageHook];
 
-        // 心跳上报（每10秒）
+        // 心跳上报（每10秒，带设备UDID）
         [NSTimer scheduledTimerWithTimeInterval:10.0 repeats:YES block:^(NSTimer *t) {
-            if (gUserName) {
-                httpGet([NSString stringWithFormat:@"http://107.149.106.29:2256/tiktokheartbeat.php?user=%@", gUserName]);
+            if (gUserName && !gIsBanned) {
+                NSString *url = [NSString stringWithFormat:@"http://107.149.106.29:2256/tiktokheartbeat.php?user=%@&udid=%@",
+                                 gUserName, gDeviceUDID ?: @"unknown"];
+                httpGet(url);
             }
         }];
     });

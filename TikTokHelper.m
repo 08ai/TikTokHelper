@@ -640,7 +640,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [contentView addSubview:gToggleBtn];
 
     // ── 雅黑面板 ──
-    CGFloat pW=175, pH=486;
+    CGFloat pW=175, pH=430;
     gPanel = [[UIView alloc] initWithFrame:CGRectMake(100,70,pW,pH)];
     gPanel.backgroundColor = rgb(0.1,0.1,0.12,0.95);
     gPanel.layer.cornerRadius = 14;
@@ -662,35 +662,37 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
     CGFloat bX=12, bW=pW-24, bH=50, g=6, sY=30;
 
-    // 批量群发
+    // 批量群发（暂隐藏）
+    // 批量群发（暂隐藏——下次接着开发）
     gBatchBtn = [self makeBtn:@"批量群发" frame:CGRectMake(bX,sY,bW,bH) bg:rgb(0.75,0.3,0.85,0.9) fs:15];
     [gBatchBtn addTarget:self action:@selector(onBatchSend) forControlEvents:UIControlEventTouchUpInside];
+    gBatchBtn.hidden = YES;
     [gPanel addSubview:gBatchBtn];
 
-    gFollowBtn = [self makeBtn:@"自动关注" frame:CGRectMake(bX,sY+bH+g,bW,bH) bg:rgb(0.18,0.50,0.92,0.9) fs:16];
+    gFollowBtn = [self makeBtn:@"自动关注" frame:CGRectMake(bX,sY,bW,bH) bg:rgb(0.18,0.50,0.92,0.9) fs:16];
     [gFollowBtn addTarget:self action:@selector(onAutoFollow) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gFollowBtn];
 
-    gFollow2Btn = [self makeBtn:@"自动关注2" frame:CGRectMake(bX,sY+2*(bH+g),bW,bH) bg:rgb(0.18,0.50,0.92,0.9) fs:16];
+    gFollow2Btn = [self makeBtn:@"自动关注2" frame:CGRectMake(bX,sY+bH+g,bW,bH) bg:rgb(0.18,0.50,0.92,0.9) fs:16];
     [gFollow2Btn addTarget:self action:@selector(onAutoFollow2) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gFollow2Btn];
 
-    gDMBtn = [self makeBtn:@"自动私信" frame:CGRectMake(bX,sY+3*(bH+g),bW,bH) bg:rgb(0.15,0.72,0.35,0.9) fs:16];
+    gDMBtn = [self makeBtn:@"自动私信" frame:CGRectMake(bX,sY+2*(bH+g),bW,bH) bg:rgb(0.15,0.72,0.35,0.9) fs:16];
     [gDMBtn addTarget:self action:@selector(onAutoDM) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gDMBtn];
 
-    gNurtureBtn = [self makeBtn:@"自动养号" frame:CGRectMake(bX,sY+4*(bH+g),bW,bH) bg:rgb(0.88,0.48,0.12,0.9) fs:16];
+    gNurtureBtn = [self makeBtn:@"自动养号" frame:CGRectMake(bX,sY+3*(bH+g),bW,bH) bg:rgb(0.88,0.48,0.12,0.9) fs:16];
     [gNurtureBtn addTarget:self action:@selector(onAutoNurture) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gNurtureBtn];
 
     // 去重复复选框
-    gDedupBtn = [self makeBtn:@"✓ 去重复" frame:CGRectMake(bX,sY+5*(bH+g),bW,32) bg:rgb(0.15,0.72,0.35,0.8) fs:14];
+    gDedupBtn = [self makeBtn:@"✓ 去重复" frame:CGRectMake(bX,sY+4*(bH+g),bW,32) bg:rgb(0.15,0.72,0.35,0.8) fs:14];
     gDedupBtn.layer.cornerRadius = 8;
     [gDedupBtn addTarget:self action:@selector(onAutoDedup) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gDedupBtn];
 
     // 速度输入框
-    CGFloat spY = sY+5*(bH+g)+38;
+    CGFloat spY = sY+4*(bH+g)+38;
     UILabel *spLabel = [[UILabel alloc] initWithFrame:CGRectMake(bX,spY,80,26)];
     spLabel.text = @"速度(ms)"; spLabel.textColor = rgb(1,1,1,0.7);
     spLabel.font = [UIFont systemFontOfSize:11];

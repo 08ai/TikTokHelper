@@ -313,28 +313,24 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){});
 }
 
-// 自动关注2 专用: 使用 AWEUserRelation.getLoginContextWithUserID:fromPageType: 创建上下文
+// 自动关注2 专用: 手动创建 AWEUserRelationContext 但用 fromPageType=1
 - (void)followUID2:(NSString *)uid {
-    Class RelCls = NSClassFromString(@"AWEUserRelation");
-    LOG(@"follow2: RelCls=%@", RelCls);
-    if (!RelCls) { LOG(@"follow2: fallback to follow1"); [self followUID:uid]; return; }
+    Class RelSvc = NSClassFromString(@"AWEUserRelationServiceImpl");
+    Class UserModel = NSClassFromString(@"AWEUserModel");
+    Class CtxCls = NSClassFromString(@"AWEUserRelationContext");
+    if (!RelSvc || !UserModel || !CtxCls) { [self followUID:uid]; return; }
 
-    SEL getCtx = NSSelectorFromString(@"getLoginContextWithUserID:fromPageType:");
-    if (![RelCls respondsToSelector:getCtx]) { LOG(@"follow2: no getLoginContext, fallback"); [self followUID:uid]; return; }
+    id user = [[UserModel alloc] init];
+    [user setValue:uid forKey:@"userID"];
 
-    id ctx = ((id(*)(id,SEL,id,long long))objc_msgSend)(RelCls, getCtx, uid, 1);
-    LOG(@"follow2: ctx=%@", ctx ? NSStringFromClass([ctx class]) : @"nil");
+    id ctx = [[CtxCls alloc] init];
+    [ctx setValue:user forKey:@"user"];
+    [ctx setValue:@(1) forKey:@"fromPageType"];  // 自动关注2用1，跟自动关注1的0不同
 
-    if (ctx) {
-        Class RelSvc = NSClassFromString(@"AWEUserRelationServiceImpl");
-        SEL sel = NSSelectorFromString(@"follow:completion:");
-        ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){
-            LOG(@"follow2: uid=%@ done", uid);
-        });
-    } else {
-        LOG(@"follow2: ctx nil, fallback");
-        [self followUID:uid];
-    }
+    SEL sel = NSSelectorFromString(@"follow:completion:");
+    ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){
+        LOG(@"follow2: uid=%@ done", uid);
+    });
 }
 
 - (void)onAutoFollow {

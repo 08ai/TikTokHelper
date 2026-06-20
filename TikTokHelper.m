@@ -375,15 +375,25 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 // ==================== 自动关注2 ====================
 - (void)onAutoFollow2 {
-    LOG(@"onAutoFollow2 TAPPED gAutoFollow2=%d", gAutoFollow2);
+    LOG(@"FOLLOW2 TAP gAutoFollow2=%d", gAutoFollow2);
     gAutoFollow2 = !gAutoFollow2;
     if (gAutoFollow2) {
         [gFollow2Btn setTitle:@"停止关注2" forState:UIControlStateNormal];
         gFollow2Btn.backgroundColor = rgb(0.85,0.25,0.25,0.9);
         setStatus(@"获取用户列表...");
+        LOG(@"FOLLOW2 started, fetching...");
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
             NSArray *uids = fetchUIDs();
-            if (uids.count == 0) { setStatus(@"无用户"); gAutoFollow2=NO; return; }
+            LOG(@"FOLLOW2 got %lu UIDs", (unsigned long)uids.count);
+            if (uids.count == 0) {
+                setStatus(@"无用户");
+                gAutoFollow2 = NO;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [gFollow2Btn setTitle:@"自动关注2" forState:UIControlStateNormal];
+                    gFollow2Btn.backgroundColor = rgb(0.18,0.50,0.92,0.9);
+                });
+                return;
+            }
             dispatch_async(dispatch_get_main_queue(), ^{
                 setStatus([NSString stringWithFormat:@"开始关注2 %lu 人",(unsigned long)uids.count]);
             });
@@ -397,17 +407,16 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
             }
             dispatch_async(dispatch_get_main_queue(), ^{
                 setStatus([NSString stringWithFormat:@"完成2 %lu 人",(unsigned long)uids.count]);
-                if (gAutoFollow2) {
-                    gAutoFollow2 = NO;
-                    [gFollow2Btn setTitle:@"自动关注2" forState:UIControlStateNormal];
-                    gFollow2Btn.backgroundColor = rgb(0.18,0.50,0.92,0.9);
-                }
+                gAutoFollow2 = NO;
+                [gFollow2Btn setTitle:@"自动关注2" forState:UIControlStateNormal];
+                gFollow2Btn.backgroundColor = rgb(0.18,0.50,0.92,0.9);
             });
         });
     } else {
         [gFollow2Btn setTitle:@"自动关注2" forState:UIControlStateNormal];
         gFollow2Btn.backgroundColor = rgb(0.18,0.50,0.92,0.9);
         setStatus(@"已停止关注2");
+        LOG(@"FOLLOW2 stopped");
     }
 }
 

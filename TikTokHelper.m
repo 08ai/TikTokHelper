@@ -313,23 +313,50 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){});
 }
 
-// 自动关注2 专用: AWEUserRelationContext + fromPageType=1
+// 自动关注2 专用: 对比工厂方法 vs 手动创建
 - (void)followUID2:(NSString *)uid {
     Class RelSvc = NSClassFromString(@"AWEUserRelationServiceImpl");
     Class UserModel = NSClassFromString(@"AWEUserModel");
     Class CtxCls = NSClassFromString(@"AWEUserRelationContext");
+    Class RelCls = NSClassFromString(@"AWEUserRelation");
     if (!RelSvc || !UserModel || !CtxCls) { [self followUID:uid]; return; }
 
+    // 方案A: 工厂方法（之前可用但后来"没反应"的方式）
+    id factoryCtx = nil;
+    NSString *factoryType = @"nil";
+    if (RelCls) {
+        SEL getCtx = NSSelectorFromString(@"getLoginContextWithUserID:fromPageType:");
+        if ([RelCls respondsToSelector:getCtx]) {
+            factoryCtx = ((id(*)(id,SEL,id,long long))objc_msgSend)(RelCls, getCtx, uid, 1);
+            factoryType = factoryCtx ? NSStringFromClass([factoryCtx class]) : @"nil";
+        }
+    }
+    LOG(@"follow2: factoryCtx=%@(%@)", factoryCtx ? @"YES" : @"NO", factoryType);
+
+    // 方案B: 手动创建（fallback）
     id user = [[UserModel alloc] init];
     [user setValue:uid forKey:@"userID"];
+    id manualCtx = [[CtxCls alloc] init];
+    [manualCtx setValue:user forKey:@"user"];
 
-    id ctx = [[CtxCls alloc] init];
-    [ctx setValue:user forKey:@"user"];
-    [ctx setValue:@(1) forKey:@"fromPageType"];
+    // 如果工厂上下文存在且有 prePageType/channelID，复制过来
+    if (factoryCtx) {
+        id fPre = _msg0(factoryCtx, NSSelectorFromString(@"prePageType"));
+        id fCh = _msg0(factoryCtx, NSSelectorFromString(@"channelID"));
+        id fItem = _msg0(factoryCtx, NSSelectorFromString(@"itemID"));
+        LOG(@"follow2: factory prePageType=%@ channelID=%@ itemID=%@", fPre, fCh, fItem);
+        if (fPre) [manualCtx setValue:fPre forKey:@"prePageType"];
+        if (fCh) [manualCtx setValue:fCh forKey:@"channelID"];
+        if (fItem) [manualCtx setValue:fItem forKey:@"itemID"];
+        [manualCtx setValue:@(1) forKey:@"fromPageType"];
+    } else {
+        [manualCtx setValue:@(1) forKey:@"fromPageType"];
+    }
 
+    LOG(@"follow2: sending with AWEUserRelationContext fromPageType=1");
     SEL sel = NSSelectorFromString(@"follow:completion:");
-    ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){
-        LOG(@"follow2: uid=%@ done", uid);
+    ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, manualCtx, ^(id r){
+        LOG(@"follow2: uid=%@ respClass=%@", uid, [r class]);
     });
 }
 

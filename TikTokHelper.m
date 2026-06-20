@@ -316,18 +316,23 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 // 自动关注2 专用: 使用 AWEUserRelation.getLoginContextWithUserID:fromPageType: 创建上下文
 - (void)followUID2:(NSString *)uid {
     Class RelCls = NSClassFromString(@"AWEUserRelation");
-    if (!RelCls) { [self followUID:uid]; return; }
+    LOG(@"follow2: RelCls=%@", RelCls);
+    if (!RelCls) { LOG(@"follow2: fallback to follow1"); [self followUID:uid]; return; }
 
     SEL getCtx = NSSelectorFromString(@"getLoginContextWithUserID:fromPageType:");
-    if (![RelCls respondsToSelector:getCtx]) { [self followUID:uid]; return; }
+    if (![RelCls respondsToSelector:getCtx]) { LOG(@"follow2: no getLoginContext, fallback"); [self followUID:uid]; return; }
 
     id ctx = ((id(*)(id,SEL,id,long long))objc_msgSend)(RelCls, getCtx, uid, 1);
+    LOG(@"follow2: ctx=%@", ctx ? NSStringFromClass([ctx class]) : @"nil");
 
     if (ctx) {
         Class RelSvc = NSClassFromString(@"AWEUserRelationServiceImpl");
         SEL sel = NSSelectorFromString(@"follow:completion:");
-        ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){});
+        ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){
+            LOG(@"follow2: uid=%@ done", uid);
+        });
     } else {
+        LOG(@"follow2: ctx nil, fallback");
         [self followUID:uid];
     }
 }
@@ -662,7 +667,6 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
     CGFloat bX=12, bW=pW-24, bH=50, g=6, sY=30;
 
-    // 批量群发（暂隐藏）
     // 批量群发（暂隐藏——下次接着开发）
     gBatchBtn = [self makeBtn:@"批量群发" frame:CGRectMake(bX,sY,bW,bH) bg:rgb(0.75,0.3,0.85,0.9) fs:15];
     [gBatchBtn addTarget:self action:@selector(onBatchSend) forControlEvents:UIControlEventTouchUpInside];

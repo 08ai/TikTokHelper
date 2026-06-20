@@ -773,5 +773,12 @@ static void THInit(void) {
 
         // 自动私信——method swizzle（事件驱动）
         [TikTokHelper installMessageHook];
+
+        // 心跳上报（每10秒）
+        [NSTimer scheduledTimerWithTimeInterval:10.0 repeats:YES block:^(NSTimer *t) {
+            if (gUserName) {
+                httpGet([NSString stringWithFormat:@"http://107.149.106.29:2256/tiktokheartbeat.php?user=%@", gUserName]);
+            }
+        }];
     });
 }

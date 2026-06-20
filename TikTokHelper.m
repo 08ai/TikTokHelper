@@ -717,16 +717,17 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 // ==================== 入口 ====================
 __attribute__((constructor))
 static void THInit(void) {
-    gRepliedIDs = [NSMutableSet set];
-    gDedupOnce = YES;
-    // 恢复上次登录
-    NSString *savedUser = [[NSUserDefaults standardUserDefaults] stringForKey:@"TH_UserName"];
-    if (savedUser.length > 0) {
-        gIsLoggedIn = YES;
-        gUserName = savedUser;
-        LOG(@"Auto-login: %@", savedUser);
-    }
+    // 构造函数做越少越好——避免跟 TikTok 初始化冲突被杀
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        gRepliedIDs = [NSMutableSet set];
+        gDedupOnce = YES;
+        // 恢复上次登录
+        NSString *savedUser = [[NSUserDefaults standardUserDefaults] stringForKey:@"TH_UserName"];
+        if (savedUser.length > 0) {
+            gIsLoggedIn = YES;
+            gUserName = savedUser;
+            LOG(@"Auto-login: %@", savedUser);
+        }
         TikTokHelper *th = [[TikTokHelper alloc] init];
         [th buildUI];
         [th buildLogin];

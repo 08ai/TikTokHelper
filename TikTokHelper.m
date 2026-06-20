@@ -726,7 +726,7 @@ static void THInit(void) {
         gUserName = savedUser;
         LOG(@"Auto-login: %@", savedUser);
     }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         TikTokHelper *th = [[TikTokHelper alloc] init];
         [th buildUI];
         [th buildLogin];

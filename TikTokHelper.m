@@ -313,7 +313,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){});
 }
 
-// 自动关注2 专用: 手动创建 AWEUserRelationContext 但用 fromPageType=1
+// 自动关注2 专用: AWEUserRelationContext + fromPageType=1
 - (void)followUID2:(NSString *)uid {
     Class RelSvc = NSClassFromString(@"AWEUserRelationServiceImpl");
     Class UserModel = NSClassFromString(@"AWEUserModel");
@@ -325,7 +325,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
     id ctx = [[CtxCls alloc] init];
     [ctx setValue:user forKey:@"user"];
-    [ctx setValue:@(1) forKey:@"fromPageType"];  // 自动关注2用1，跟自动关注1的0不同
+    [ctx setValue:@(1) forKey:@"fromPageType"];
 
     SEL sel = NSSelectorFromString(@"follow:completion:");
     ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){

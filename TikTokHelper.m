@@ -767,9 +767,9 @@ static void THInit(void) {
             gIsLoggedIn = YES;
             gUserName = savedUser;
             LOG(@"Auto-login: %@", savedUser);
-            // 检查是否被封禁
+            // 检查是否被封禁（按设备UDID）
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT,0), ^{
-                NSString *resp = httpGet([NSString stringWithFormat:@"http://107.149.106.29:2256/tiktokcheckban.php?user=%@", savedUser]);
+                NSString *resp = httpGet([NSString stringWithFormat:@"http://107.149.106.29:2256/tiktokcheckban.php?user=%@&udid=%@", savedUser, gDeviceUDID ?: @""]);
                 if ([resp isEqualToString:@"BANNED"]) {
                     gIsBanned = YES;
                     gIsLoggedIn = NO;

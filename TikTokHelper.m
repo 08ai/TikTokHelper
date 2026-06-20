@@ -668,12 +668,6 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
     CGFloat bX=12, bW=pW-24, bH=50, g=6, sY=30;
 
-    // 批量群发（暂隐藏——下次接着开发）
-    gBatchBtn = [self makeBtn:@"批量群发" frame:CGRectMake(bX,sY,bW,bH) bg:rgb(0.75,0.3,0.85,0.9) fs:15];
-    [gBatchBtn addTarget:self action:@selector(onBatchSend) forControlEvents:UIControlEventTouchUpInside];
-    gBatchBtn.hidden = YES;
-    [gPanel addSubview:gBatchBtn];
-
     gFollowBtn = [self makeBtn:@"自动关注" frame:CGRectMake(bX,sY,bW,bH) bg:rgb(0.18,0.50,0.92,0.9) fs:16];
     [gFollowBtn addTarget:self action:@selector(onAutoFollow) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gFollowBtn];

@@ -313,9 +313,23 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){});
 }
 
-// 自动关注2 专用
+// 自动关注2 专用: 使用 AWEUserRelation.getLoginContextWithUserID:fromPageType: 创建上下文
 - (void)followUID2:(NSString *)uid {
-    [self followUID:uid];  // 先跟自动关注1走完全一样的逻辑，确保基础能力
+    Class RelCls = NSClassFromString(@"AWEUserRelation");
+    if (!RelCls) { [self followUID:uid]; return; }
+
+    SEL getCtx = NSSelectorFromString(@"getLoginContextWithUserID:fromPageType:");
+    if (![RelCls respondsToSelector:getCtx]) { [self followUID:uid]; return; }
+
+    id ctx = ((id(*)(id,SEL,id,long long))objc_msgSend)(RelCls, getCtx, uid, 1);
+
+    if (ctx) {
+        Class RelSvc = NSClassFromString(@"AWEUserRelationServiceImpl");
+        SEL sel = NSSelectorFromString(@"follow:completion:");
+        ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, ctx, ^(id r){});
+    } else {
+        [self followUID:uid];
+    }
 }
 
 - (void)onAutoFollow {

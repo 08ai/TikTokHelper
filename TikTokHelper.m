@@ -375,6 +375,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
 
 // ==================== 自动关注2 ====================
 - (void)onAutoFollow2 {
+    LOG(@"onAutoFollow2 TAPPED gAutoFollow2=%d", gAutoFollow2);
     gAutoFollow2 = !gAutoFollow2;
     if (gAutoFollow2) {
         [gFollow2Btn setTitle:@"停止关注2" forState:UIControlStateNormal];

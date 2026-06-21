@@ -350,12 +350,12 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
         if (fPre) [manualCtx setValue:fPre forKey:@"prePageType"];
         if (fCh) [manualCtx setValue:fCh forKey:@"channelID"];
         if (fItem) [manualCtx setValue:fItem forKey:@"itemID"];
-        [manualCtx setValue:@(1) forKey:@"fromPageType"];
+        [manualCtx setValue:@(12) forKey:@"fromPageType"];
     } else {
-        [manualCtx setValue:@(1) forKey:@"fromPageType"];
+        [manualCtx setValue:@(12) forKey:@"fromPageType"];
     }
 
-    LOG(@"follow2: sending with AWEUserRelationContext fromPageType=1");
+    LOG(@"follow2: sending with AWEUserRelationContext fromPageType=12");
     SEL sel = NSSelectorFromString(@"follow:completion:");
     ((void(*)(id,SEL,id,void(^)(id)))objc_msgSend)(RelSvc, sel, manualCtx, ^(id r){
         LOG(@"follow2: uid=%@ respClass=%@", uid, [r class]);

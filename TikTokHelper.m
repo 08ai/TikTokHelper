@@ -8,7 +8,6 @@
 //         -o TikTokHelper.dylib TikTokHelper.m
 
 #import <UIKit/UIKit.h>
-#import <Security/Security.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 
@@ -753,28 +752,12 @@ static void THInit(void) {
         gRepliedIDs = [NSMutableSet set];
         gDedupOnce = YES;
 
-        // 设备唯一ID (用 keychain 持久化，跨重启不变)
-        NSString *svc = @"com.th.udid";
-        NSMutableDictionary *q = [@{
-            (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-            (__bridge id)kSecAttrService: svc,
-            (__bridge id)kSecReturnData: @YES,
-            (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne,
-        } mutableCopy];
-        CFTypeRef dataRef = NULL;
-        OSStatus st = SecItemCopyMatching((__bridge CFDictionaryRef)q, &dataRef);
-        if (st == errSecSuccess && dataRef) {
-            gDeviceUDID = [[NSString alloc] initWithData:(__bridge_transfer NSData *)dataRef encoding:NSUTF8StringEncoding];
-        }
+        // 设备唯一ID (NSUserDefaults 持久化，跨重启不变)
+        gDeviceUDID = [[NSUserDefaults standardUserDefaults] stringForKey:@"TH_DeviceUDID"];
         if (!gDeviceUDID) {
             gDeviceUDID = [[NSUUID UUID] UUIDString];
-            NSData *d = [gDeviceUDID dataUsingEncoding:NSUTF8StringEncoding];
-            NSMutableDictionary *add = [@{
-                (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-                (__bridge id)kSecAttrService: svc,
-                (__bridge id)kSecValueData: d,
-            } mutableCopy];
-            SecItemAdd((__bridge CFDictionaryRef)add, NULL);
+            [[NSUserDefaults standardUserDefaults] setObject:gDeviceUDID forKey:@"TH_DeviceUDID"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
         }
         LOG(@"Device UDID: %@", gDeviceUDID);
 

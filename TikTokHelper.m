@@ -29,7 +29,7 @@ static id _msg1(id t, SEL s, id a) { if(!t||![t respondsToSelector:s])return nil
 
 // ==================== 全局状态 ====================
 static UIWindow *gWin;
-static UIButton *gToggleBtn, *gFollowBtn, *gFollow2Btn, *gDMBtn, *gNurtureBtn, *gDedupBtn, *gBatchBtn;
+static UIButton *gToggleBtn, *gFollowBtn, *gFollow2Btn, *gDMBtn, *gNurtureBtn, *gDedupBtn, *gLogoutBtn, *gBatchBtn;
 static UIView   *gPanel;
 static UILabel  *gStatusLabel;
 static BOOL      gExpanded = NO;
@@ -463,6 +463,20 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [self updateDedupBtn];
 }
 
+// 退出登录
+- (void)onLogout {
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"TH_UserName"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    gIsLoggedIn = NO;
+    gUserName = nil;
+    gExpanded = NO;
+    gPanel.alpha = 0;
+    [gToggleBtn setTitle:@"展开" forState:UIControlStateNormal];
+    setStatus(@"已退出");
+    [UIView animateWithDuration:0.3 animations:^{ gLoginView.alpha = 1.0; }];
+    LOG(@"Logout");
+}
+
 - (void)onSpeedChange {
     NSString *text = gSpeedField.text;
     if (text.length == 0) { gFollowSpeed = 0.3; return; }
@@ -657,7 +671,7 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [contentView addSubview:gToggleBtn];
 
     // ── 雅黑面板 ──
-    CGFloat pW=175, pH=430;
+    CGFloat pW=175, pH=466;
     gPanel = [[UIView alloc] initWithFrame:CGRectMake(100,70,pW,pH)];
     gPanel.backgroundColor = rgb(0.1,0.1,0.12,0.95);
     gPanel.layer.cornerRadius = 14;
@@ -701,8 +715,14 @@ static void hooked_setLastMsg(id self, SEL _cmd, id message) {
     [gDedupBtn addTarget:self action:@selector(onAutoDedup) forControlEvents:UIControlEventTouchUpInside];
     [gPanel addSubview:gDedupBtn];
 
+    // 退出登录
+    gLogoutBtn = [self makeBtn:@"退出账号" frame:CGRectMake(bX,sY+4*(bH+g)+38,bW,28) bg:rgb(0.85,0.2,0.2,0.85) fs:12];
+    gLogoutBtn.layer.cornerRadius = 8;
+    [gLogoutBtn addTarget:self action:@selector(onLogout) forControlEvents:UIControlEventTouchUpInside];
+    [gPanel addSubview:gLogoutBtn];
+
     // 速度输入框
-    CGFloat spY = sY+4*(bH+g)+38;
+    CGFloat spY = sY+4*(bH+g)+72;
     UILabel *spLabel = [[UILabel alloc] initWithFrame:CGRectMake(bX,spY,80,26)];
     spLabel.text = @"速度(ms)"; spLabel.textColor = rgb(1,1,1,0.7);
     spLabel.font = [UIFont systemFontOfSize:11];
